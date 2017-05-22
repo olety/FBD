@@ -19,9 +19,11 @@ class Gatherer:
             logging.basicConfig(level=logging.INFO)
             logging.info(
                 'Gatherer: Didn\'t receive a custom logger so falling back to the default one')
+            self.disable_progressbar = False
             self.logger = logging
         else:
             self.logger = logger
+            self.disable_progressbar = self.logger.getEffectiveLevel() <= logging.DEBUG
             self.logger.debug('Gatherer: Using logger {0}'.format(logger))
         self.logger.debug('Gatherer: Started initialization')
         self.client_id = client_id
@@ -140,8 +142,8 @@ class Gatherer:
         place_id_list = [i['id'] for i in place_ids['data']]
         # There are multiple pages in the response
         while 'paging' in place_ids and 'next' in place_ids['paging']:
-            place_id_next = requests.get(place_ids['paging']['next']).json()
-            for place in place_id_next['data']:
+            place_ids = requests.get(place_ids['paging']['next']).json()
+            for place in place_ids['data']:
                 id_ = place.get('id', None)
                 if id_:
                     place_id_list.append(id_)
@@ -160,9 +162,11 @@ class Gatherer:
                 'picture.type(large),location'.format(int(start_time)),
                 'access_token': self.token,
             }
+            self.logger.debug('Gatherer: Received request to get place_events from id'
+                              ', page_id={0}, start_time={1}'.format(page_id, start_time))
             events = requests.get(
-                'https://graph.facebook.com/v2.8/', params=params)
-            return events.json()
+                'https://graph.facebook.com/v2.8/', params=params).json()
+            return events
         except Exception as e:
             print(e)
             return None
@@ -175,14 +179,19 @@ class Gatherer:
         for point in tqdm.tqdm(
                 self._generate_points(radius, scan_radius, *city_coords),
                 total=self._num_iters(radius, scan_radius, *city_coords),
-                desc='Processing points'):
+                desc='Processing points',
+                disable=self.disable_progressbar):
             self.logger.debug(
                 'Gatherer - Events: Processing point {0}'.format(point))
-            for place_id in tqdm.tqdm(self._get_placeids_loc(point[0], point[1], scan_radius, keyword, limit), desc='Processing places'):
+            for place_id in tqdm.tqdm(
+                    self._get_placeids_loc(point[0], point[1],
+                                           scan_radius, keyword, limit),
+                    desc='Processing places',
+                    disable=self.disable_progressbar):
                 place_events = self._get_place_events_from_id(
                     place_id)[place_id]
                 if place_events and 'events' in place_events:
-                    for event in tqdm.tqdm(place_events['events']['data'], desc='Processing events'):
+                    for event in place_events['events']['data']:
                         place = event.get('place', None)
                         if place:
                             self.logger.debug(
@@ -221,9 +230,11 @@ class Gatherer:
             scan_radius, city, radius, keyword, limit, events_max, pages_max)
 
         if use_storage:
-            for p in tqdm.tqdm(places, desc='Saving places'):
+            for p in tqdm.tqdm(places, desc='Saving places',
+                               disable=self.disable_progressbar):
                 storage.save_place(p)
-            for e in tqdm.tqdm(events, desc='Saving events'):
+            for e in tqdm.tqdm(events, desc='Saving events',
+                               disable=self.disable_progressbar):
                 storage.save_event(e)
             return places, events
         else:
@@ -306,25 +317,9 @@ class Gatherer:
         return {item: response[item]['summary']['total_count'] for item in response}
 
 
-class TqdmLoggingHandler (logging.Handler):
-    def __init__(self, level=logging.NOTSET):
-        super(self.__class__, self).__init__(level)
-
-    def emit(self, record):
-        try:
-            msg = self.format(record)
-            tqdm.tqdm.write(msg)
-            self.flush()
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except:
-            self.handleError(record)
-
-
 if __name__ == '__main__':
-
+    # Adding command line arguments
     import argparse
-
     argparser = argparse.ArgumentParser(
         description='Updates the facebook database with new data')
     argparser.add_argument('-up', '--update-places', dest='update_places', action='store_true',
@@ -341,19 +336,26 @@ if __name__ == '__main__':
         sys.exit(0)
 
     # Configuring the logger
-    log = logging.getLogger(__name__)
-    log.setLevel(logging.DEBUG if args.verbose else logging.INFO)
-    log.addHandler(TqdmLoggingHandler())
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG)
+        log = logging
+    else:
+        log = logging.getLogger(__name__)
+        log.setLevel(logging.INFO)
+        log.addHandler(logging.StreamHandler())
 
+    # Handling flags -up, --update-places
     if args.update_places:
         with open('config.json', 'r') as f:
             params = json.load(f)
         storage = Storage()
         gatherer = Gatherer(params['client_id'], params['client_secret'],
                             storage=storage)
-        for place_id in tqdm.tqdm(storage.get_all_place_ids(), desc='Processing places'):
+        for place_id in tqdm.tqdm(storage.get_all_place_ids(), desc='Processing places',
+                                  disable=args.verbose):
             gatherer.get_place_from_id(place_id)
 
+    # Handling flags -ue, --update-events
     if args.update_events:
         with open('config.json', 'r') as f:
             params = json.load(f)
@@ -361,7 +363,8 @@ if __name__ == '__main__':
         storage = Storage()
         gatherer = Gatherer(params['client_id'], params['client_secret'],
                             storage=storage, logger=log)
-        # print(gatherer.get_posts(gatherer.get_page_id('https://web.facebook.com/cnn/')))
         gatherer.get_events_loc(params['scan_radius'], params['city'], params['radius'],
                                 keyword=params['keyword'], pages_max=params['pages_max'],
                                 limit=params['limit'], events_max=params['events_max'])
+
+    # print(gatherer.get_posts(gatherer.get_page_id('https://web.facebook.com/cnn/')))

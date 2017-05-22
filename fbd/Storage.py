@@ -1,12 +1,19 @@
 #!/usr/local/bin/python3
-import tqdm
 import sqlalchemy
 import logging
 import dateutil.parser
+import datetime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, validates
 Base = declarative_base()
 db = sqlalchemy.create_engine('sqlite:///db/fb.sqlite')
+
+# TODO: Implement datetime conversion inside of the classes when converting to JSON
+# def datetime_handler(x):
+#     if isinstance(x, datetime.datetime):
+#         return x.isoformat()
+#     raise TypeError("Unknown type")
+
 
 place_topic = sqlalchemy.Table(
     'Place_Topic', Base.metadata,
@@ -19,6 +26,15 @@ place_topic = sqlalchemy.Table(
 
 class Topic(Base):
     __tablename__ = 'Topic'
+
+    def to_json(self):
+        # TODO: Implement JSON conversion
+        pass
+
+    def to_dict(self):
+        # TODO: Implement dictionary conversion
+        pass
+
     id = sqlalchemy.Column(sqlalchemy.String(200), primary_key=True)
     name = sqlalchemy.Column(sqlalchemy.String(100))
 
@@ -35,6 +51,15 @@ class Topic(Base):
 
 class Place(Base):
     __tablename__ = 'Place'
+
+    def to_json(self):
+        # TODO: Implement JSON conversion
+        pass
+
+    def to_dict(self):
+        # TODO: Implement dictionary conversion
+        pass
+
     id = sqlalchemy.Column(sqlalchemy.String(200), primary_key=True)
     name = sqlalchemy.Column(sqlalchemy.String(100))
     ptype = sqlalchemy.Column(sqlalchemy.String(10))
@@ -59,6 +84,7 @@ class Place(Base):
         self.id = id
         self.name = name
         self.ptype = ptype
+        # FIXME: Topic insertion is not working
         self.Topic = topics
         self.city = city
         self.country = country
@@ -76,6 +102,15 @@ class Place(Base):
 
 class Event(Base):
     __tablename__ = 'Event'
+
+    def to_json(self):
+        # TODO: Implement JSON conversion
+        pass
+
+    def to_dict(self):
+        # TODO: Implement dictionary conversion
+        pass
+
     id = sqlalchemy.Column(sqlalchemy.String(200), primary_key=True)
     description = sqlalchemy.Column(sqlalchemy.String(10000))
     name = sqlalchemy.Column(sqlalchemy.String(100))
@@ -324,16 +359,16 @@ class Storage:
         pass
 
     def get_all_place_ids(self):
-        return [id_[0] for id_ in self.session.query(Event.id).all()]
+        return [id_[0] for id_ in self.session.query(Place.id).all()]
 
     def get_place(self, place_id):
-        return self.session.query(Place.id).filter_by(id=place_id).scalar()
+        return self.session.query(Place).filter_by(id=place_id).scalar()
 
     def place_exists(self, place_id):
         return True if self.session.query(Place.id).filter_by(id=place_id).scalar() is not None else False
 
     def get_event(self, event_id):
-        return self.session.query(Event.id).filter_by(id=event_id).scalar()
+        return self.session.query(Event).filter_by(id=event_id).scalar()
 
     def event_exists(self, event_id):
         return True if self.session.query(Event.id).filter_by(id=event_id).scalar() is not None else False

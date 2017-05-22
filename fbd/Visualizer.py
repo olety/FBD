@@ -45,6 +45,7 @@ class Visualizer:
         plt.show()
 
     def plot_gmaps(self, filename='gmap.html'):
+        # TODO: Add filters and popups to the generated plot
         logging.debug('Visualizer - gmaps_plot: Requesting location')
         gmap = gmplot.GoogleMapPlotter.from_geocode('Wrocław')
         lats = []
