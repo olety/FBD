@@ -14,16 +14,14 @@ class Gatherer:
     LAT_PER_100M = 0.001622 / 1.8
     LONG_PER_100M = 0.005083 / 5.5
 
-    def __init__(self, client_id, client_secret, storage=None, logger=None):
+    def __init__(self, client_id, client_secret, storage=None, logger=None, disable_progressbar=False):
         if not logger:
             logging.basicConfig(level=logging.INFO)
             logging.info(
                 'Gatherer: Didn\'t receive a custom logger so falling back to the default one')
-            self.disable_progressbar = False
             self.logger = logging
         else:
             self.logger = logger
-            self.disable_progressbar = self.logger.getEffectiveLevel() <= logging.DEBUG
             self.logger.debug('Gatherer: Using logger {0}'.format(logger))
         self.logger.debug('Gatherer: Started initialization')
         self.client_id = client_id
@@ -39,6 +37,7 @@ class Gatherer:
             params=token_params).json()['access_token']
         self.logger.debug('Gatherer: Initialized')
         self.storage = storage
+        self.disable_progressbar = disable_progressbar
 
     @staticmethod
     def lat_from_met(met):
@@ -244,20 +243,20 @@ class Gatherer:
         if not self.storage and use_storage:
             raise Exception(
                 'Gatherer: get_events_loc - Storage wasn\'t defined')
-            self.logger.debug('Gatherer: Get place request, id={0}'
-                              .format(place_id))
-            params = {
-                'ids': place_id,
-                'fields': 'id,name,place_type,place_topics,cover.fields(id,source),'
-                'picture.type(large),location',
-                'access_token': self.token,
-            }
-            place = requests.get(
-                'https://graph.facebook.com/v2.8/',
-                params=params).json()
-            if storage:
-                self.storage.update_place(place_id)
-                return place
+        self.logger.debug('Gatherer: Get place request, id={0}'
+                          .format(place_id))
+        params = {
+            'ids': place_id,
+            'fields': 'id,name,place_type,place_topics,cover.fields(id,source),'
+            'picture.type(large),location',
+            'access_token': self.token,
+        }
+        place = requests.get(
+            'https://graph.facebook.com/v2.8/',
+            params=params).json()[place_id]
+        if storage:
+            self.storage.update_place(place)
+            return place
 
     def get_page(self, page_id, get_posts=True):
         # id,name,about,category,fan_count
@@ -350,7 +349,7 @@ if __name__ == '__main__':
             params = json.load(f)
         storage = Storage()
         gatherer = Gatherer(params['client_id'], params['client_secret'],
-                            storage=storage)
+                            storage=storage, logger=log, disable_progressbar=args.verbose)
         for place_id in tqdm.tqdm(storage.get_all_place_ids(), desc='Processing places',
                                   disable=args.verbose):
             gatherer.get_place_from_id(place_id)
@@ -362,7 +361,7 @@ if __name__ == '__main__':
 
         storage = Storage()
         gatherer = Gatherer(params['client_id'], params['client_secret'],
-                            storage=storage, logger=log)
+                            storage=storage, logger=log, disable_progressbar=args.verbose)
         gatherer.get_events_loc(params['scan_radius'], params['city'], params['radius'],
                                 keyword=params['keyword'], pages_max=params['pages_max'],
                                 limit=params['limit'], events_max=params['events_max'])

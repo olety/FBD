@@ -2,7 +2,7 @@
 import sqlalchemy
 import logging
 import dateutil.parser
-import datetime
+# import datetime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, validates
 Base = declarative_base()
@@ -37,6 +37,8 @@ class Topic(Base):
 
     id = sqlalchemy.Column(sqlalchemy.String(200), primary_key=True)
     name = sqlalchemy.Column(sqlalchemy.String(100))
+    places = relationship('Place',
+                          secondary=place_topic)
 
     @validates('name')
     def validate_trunc(self, key, value):
@@ -46,6 +48,7 @@ class Topic(Base):
         return value
 
     def __init__(self, id, name):
+        self.id = id
         self.name = name
 
 
@@ -68,9 +71,8 @@ class Place(Base):
     lat = sqlalchemy.Column(sqlalchemy.Float())
     lon = sqlalchemy.Column(sqlalchemy.Float())
     street = sqlalchemy.Column(sqlalchemy.String(100))
-    children = relationship('Place',
-                            secondary=place_topic,
-                            backref='places')
+    topics = relationship('Topic',
+                          secondary=place_topic)
     zip = sqlalchemy.Column(sqlalchemy.String(6))
 
     @validates('name', 'ptype', 'street', 'country', 'zip')
@@ -84,8 +86,7 @@ class Place(Base):
         self.id = id
         self.name = name
         self.ptype = ptype
-        # FIXME: Topic insertion is not working
-        self.Topic = topics
+        self.topics = topics
         self.city = city
         self.country = country
         self.lat = lat
@@ -264,7 +265,7 @@ class Event(Base):
 try:
     Base.metadata.create_all(db)
 except Exception as e:
-    print(e)
+    logging.debug(e)
     pass
 
 
@@ -292,25 +293,27 @@ class Storage:
 
     def save_topic(self, topic_dict, commit=True):
         try:
-            topic = Topic(id=topic_dict.get('id', '0'),
-                          name=topic_dict.get('name', ''))
+            if self.topic_exists(topic_dict.get('id')):
+                return self.get_topic(topic_dict.get('id'))
+            topic = Topic(id=topic_dict.get('id'),
+                          name=topic_dict.get('name'))
             self.session.add(topic)
             if commit:
                 self.session.commit()
-            return Topic
+            return topic
         except Exception as e:
             self.session.rollback()
-            logging.error(e)
+            logging.error('Storage - save topic: {0}'.format(e))
 
     def save_place(self, place, commit=True):
         try:
             place_loc = place.get('location', {})
             topic_list = []
-            for topic in place.get('place_topics', []):
-                topic_list.append(
-                    self.save_topic(topic_dict={'name': topic['name'],
-                                                'id': topic['id']})
-                )
+            # IDEA: Move this to the place and pass in a string list
+            if place.get('place_topics', None):
+                for topic in place['place_topics'].get('data'):
+                    topic_list.append(self.save_topic(topic_dict={'name': topic['name'],
+                                                                  'id': topic['id']}))
             place = Place(id=place.get('id', '0'), topics=topic_list, ptype=place.get('place_type', 'UNKNOWN'), name=place.get('name', 'Unnamed'),
                           city=place_loc.get('city', 'Wroclaw'), country=place_loc.get('country', 'Poland'),
                           lat=place_loc.get('latitude', 0.0), lon=place_loc.get('longitude', 0.0),
@@ -320,37 +323,38 @@ class Storage:
                 self.session.commit()
         except Exception as e:
             self.session.rollback()
-            logging.error(e)
+            logging.error('Storage - save place: {0}'.format(e))
 
     def update_place(self, place, commit=True):
         try:
             logging.debug('Storage: update_place request, place = {0}'
                           .format(place))
+            # IDEA: Move this to the place and pass in a string list
             if self.place_exists(place['id']):
                 place_loc = place.get('location', {})
                 topic_list = []
-                for topic in place['place_topics']:
-                    topic_list.append(
-                        self.save_topic(topic_dict={'name': topic['name'],
-                                                    'id': topic['id']})
-                    )
+                if place.get('place_topics', None):
+                    for topic in place['place_topics'].get('data'):
+                        topic_list.append(self.save_topic(topic_dict={'name': topic['name'],
+                                                                      'id': topic['id']}))
                 old_place = self.get_place(place['id'])
-                old_place.Topic = topic_list
+                old_place.topics = topic_list
                 old_place.ptype = place['place_type']
                 old_place.name = place['name']
-                old_place.city = place_loc['city']
-                old_place.country = place_loc['country']
+                old_place.city = place_loc.get('city')
+                old_place.country = place_loc.get('country')
                 old_place.lat = place_loc['latitude']
                 old_place.lon = place_loc['longitude']
-                old_place.street = place_loc['street']
-                old_place.zip = place_loc['zip']
+                old_place.street = place_loc.get('street')
+                old_place.zip = place_loc.get('zip')
                 if commit:
                     self.session.commit()
+                return old_place
             else:
-                self.save_place(place, commit)
+                return self.save_place(place, commit)
         except Exception as e:
             self.session.rollback()
-            logging.error(e)
+            logging.error('Storage - update place: {0}'.format(e))
 
     def save_post(self):
         pass
@@ -363,6 +367,12 @@ class Storage:
 
     def get_place(self, place_id):
         return self.session.query(Place).filter_by(id=place_id).scalar()
+
+    def get_topic(self, topic_id):
+        return self.session.query(Topic).filter_by(id=topic_id).scalar()
+
+    def topic_exists(self, topic_id):
+        return True if self.session.query(Topic.id).filter_by(id=topic_id).scalar() is not None else False
 
     def place_exists(self, place_id):
         return True if self.session.query(Place.id).filter_by(id=place_id).scalar() is not None else False

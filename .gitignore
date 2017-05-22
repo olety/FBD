@@ -1,4 +1,5 @@
 #--------- Project ---------#
+CHANGELOG.md
 fbd/config.json
 fbd/db/*
 fbd/vis_out/*
