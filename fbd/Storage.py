@@ -1,10 +1,10 @@
 #!/usr/local/bin/python3
+import tqdm
 import sqlalchemy
 import logging
 import dateutil.parser
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, validates
-
 Base = declarative_base()
 db = sqlalchemy.create_engine('sqlite:///db/fb.sqlite')
 
@@ -55,10 +55,11 @@ class Place(Base):
             return value[:max_len]
         return value
 
-    def __init__(self, id, name, ptype, city, country, lat, lon, street, zip):
+    def __init__(self, id, name, topics, ptype, city, country, lat, lon, street, zip):
         self.id = id
         self.name = name
         self.ptype = ptype
+        self.Topic = topics
         self.city = city
         self.country = country
         self.lat = lat
@@ -254,10 +255,28 @@ class Storage:
             self.session.rollback()
             logging.error(e)
 
+    def save_topic(self, topic_dict, commit=True):
+        try:
+            topic = Topic(id=topic_dict.get('id', '0'),
+                          name=topic_dict.get('name', ''))
+            self.session.add(topic)
+            if commit:
+                self.session.commit()
+            return Topic
+        except Exception as e:
+            self.session.rollback()
+            logging.error(e)
+
     def save_place(self, place, commit=True):
         try:
             place_loc = place.get('location', {})
-            place = Place(id=place.get('id', '0'), name=place.get('name', 'Unnamed'),
+            topic_list = []
+            for topic in place.get('place_topics', []):
+                topic_list.append(
+                    self.save_topic(topic_dict={'name': topic['name'],
+                                                'id': topic['id']})
+                )
+            place = Place(id=place.get('id', '0'), topics=topic_list, ptype=place.get('place_type', 'UNKNOWN'), name=place.get('name', 'Unnamed'),
                           city=place_loc.get('city', 'Wroclaw'), country=place_loc.get('country', 'Poland'),
                           lat=place_loc.get('latitude', 0.0), lon=place_loc.get('longitude', 0.0),
                           street=place_loc.get('street', 'Unknown'), zip=place_loc.get('zip', '00-000'))
@@ -268,17 +287,56 @@ class Storage:
             self.session.rollback()
             logging.error(e)
 
+    def update_place(self, place, commit=True):
+        try:
+            logging.debug('Storage: update_place request, place = {0}'
+                          .format(place))
+            if self.place_exists(place['id']):
+                place_loc = place.get('location', {})
+                topic_list = []
+                for topic in place['place_topics']:
+                    topic_list.append(
+                        self.save_topic(topic_dict={'name': topic['name'],
+                                                    'id': topic['id']})
+                    )
+                old_place = self.get_place(place['id'])
+                old_place.Topic = topic_list
+                old_place.ptype = place['place_type']
+                old_place.name = place['name']
+                old_place.city = place_loc['city']
+                old_place.country = place_loc['country']
+                old_place.lat = place_loc['latitude']
+                old_place.lon = place_loc['longitude']
+                old_place.street = place_loc['street']
+                old_place.zip = place_loc['zip']
+                if commit:
+                    self.session.commit()
+            else:
+                self.save_place(place, commit)
+        except Exception as e:
+            self.session.rollback()
+            logging.error(e)
+
     def save_post(self):
         pass
 
     def save_page(self):
         pass
 
-    def event_exists(self, event_id):
-        return True if self.session.query(Event.id).filter_by(id=event_id).scalar() is not None else False
+    def get_all_place_ids(self):
+        return [id_[0] for id_ in self.session.query(Event.id).all()]
+
+    def get_place(self, place_id):
+        return self.session.query(Place.id).filter_by(id=place_id).scalar()
 
     def place_exists(self, place_id):
         return True if self.session.query(Place.id).filter_by(id=place_id).scalar() is not None else False
+
+    def get_event(self, event_id):
+        return self.session.query(Event.id).filter_by(id=event_id).scalar()
+
+    def event_exists(self, event_id):
+        return True if self.session.query(Event.id).filter_by(id=event_id).scalar() is not None else False
 
 
 if __name__ == '__main__':
