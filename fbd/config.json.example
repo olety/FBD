@@ -1,0 +1,11 @@
+{
+    "client_id" : "YOUR CLIENT ID",
+    "client_secret" : "YOUR CLIENT SECRET",
+    "scan_radius" : 750,
+    "keyword" : "*",
+    "city" : "YOUR CITY",
+    "radius" : 5000,
+    "pages_max" : 500,
+    "events_max": 50000,
+    "limit" : 15
+}

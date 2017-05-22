@@ -3,12 +3,19 @@ import gmplot
 import logging
 import os
 import numpy as np
-from Storage import Storage, Place, Event
+from storage import Storage, Place, Event
 
 
 class Visualizer:
-    def __init__(self, storage):
+    def __init__(self, storage, working_folder='./vis_out'):
         self.storage = storage
+        self.workplace = working_folder
+
+    def _get_fpath(self, filename, delete_old=False):
+        fpath = os.path.join(self.workplace, filename)
+        if delete_old and os.path.isfile(fpath):
+            os.remove(fpath)
+        return fpath
 
     def plot_event_count(self, top=5):
         from sqlalchemy import func, desc
@@ -37,7 +44,7 @@ class Visualizer:
         logging.debug('Visualizer - plot_event_count: Showing the plot')
         plt.show()
 
-    def plot_gmaps(self):
+    def plot_gmaps(self, filename='gmap.html'):
         logging.debug('Visualizer - gmaps_plot: Requesting location')
         gmap = gmplot.GoogleMapPlotter.from_geocode('Wrocław')
         lats = []
@@ -54,9 +61,7 @@ class Visualizer:
         gmap.scatter(lats, lngs, '#3B0B39', size=40, marker=False)
 
         logging.debug('Visualizer - gmaps_plot: Started drawing')
-        if os.path.isfile('gmap.html'):
-            os.remove('gmap.html')
-        gmap.draw('gmap.html')
+        gmap.draw(self._get_fpath(filename, delete_old=True))
 
 
 if __name__ == '__main__':
@@ -64,4 +69,4 @@ if __name__ == '__main__':
     s = Storage()
     v = Visualizer(s)
     v.plot_gmaps()
-    v.plot_event_count()
+    # v.plot_event_count()

@@ -1,11 +1,11 @@
-### Project ###
-fbd/config*
-fbd/*.sqlite
-fbd/*.html
+#--------- Project ---------#
+fbd/config.json
+fbd/db/*
+fbd/vis_out/*
 fbd/alembic*
 fbd/manage.py
 
-### macOS ###
+#--------- macOS ---------#
 *.DS_Store
 .AppleDouble
 .LSOverride
@@ -32,7 +32,7 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
-### Python ###
+#--------- Python ---------#
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -164,7 +164,7 @@ bh_unicode_properties.cache
 # https://packagecontrol.io/packages/sublime-github
 GitHub.sublime-settings
 
-### Vim ###
+#--------- Vim ---------#
 # swap
 [._]*.s[a-v][a-z]
 [._]*.sw[a-p]

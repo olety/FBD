@@ -6,7 +6,7 @@ import requests
 import logging
 import geocoder
 # import multiprocessing
-from Storage import Storage
+from backend.storage import Storage
 
 
 class Gatherer:

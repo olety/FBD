@@ -6,7 +6,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, validates
 
 Base = declarative_base()
-db = sqlalchemy.create_engine('sqlite:///fb.sqlite')
+db = sqlalchemy.create_engine('sqlite:///db/fb.sqlite')
 
 place_topic = sqlalchemy.Table(
     'Place_Topic', Base.metadata,
