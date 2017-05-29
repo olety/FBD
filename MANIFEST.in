@@ -1,0 +1,7 @@
+include LICENSE
+include README.md
+include fbd/migrate
+include fbd/migrations/*
+include fbd/config.json.example
+include fbd/google_api.json.example
+include fbd/alembic.ini.example

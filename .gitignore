@@ -1,10 +1,11 @@
 #--------- Project ---------#
 CHANGELOG.md
+TODO.md
 fbd/config.json
 fbd/google_api.json
 fbd/db/*
 fbd/vis_out/*
-fbd/alembic*
+fbd/alembic.ini
 fbd/manage.py
 fbd/run.py
 
