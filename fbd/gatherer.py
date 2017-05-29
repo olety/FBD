@@ -8,13 +8,11 @@ import time
 import requests
 import tqdm  # Progress bar
 
-from . import storage, tools
-
 
 class Gatherer:
     # TODO: Move to numpy arrays / DFs?
 
-    def __init__(self, client_id, client_secret, storage=None, logger=None, disable_progressbar=False):
+    def __init__(self, client_id, client_secret, fbd.storage=None, logger=None, disable_progressbar=False):
         if not logger:
             logging.basicConfig(level=logging.INFO)
             logging.info(
@@ -36,7 +34,7 @@ class Gatherer:
             'https://graph.facebook.com/v2.8/oauth/access_token?',
             params=token_params).json()['access_token']
         self.logger.debug('Gatherer: Initialized')
-        self.storage = storage
+        self.fbd.storage = fbd.storage
         self.disable_progressbar = disable_progressbar
 
     @staticmethod
@@ -68,13 +66,13 @@ class Gatherer:
     @staticmethod
     def _generate_points(radius, scan_radius, center_point_lat, center_point_lng):
         # Defining the general square bounds
-        top = center_point_lat + tools.lat_from_met(radius)
-        bottom = center_point_lat - tools.lat_from_met(radius)
-        left = center_point_lng - tools.lon_from_met(radius)
-        right = center_point_lng + tools.lon_from_met(radius)
+        top = center_point_lat + fbd.tools.lat_from_met(radius)
+        bottom = center_point_lat - fbd.tools.lat_from_met(radius)
+        left = center_point_lng - fbd.tools.lon_from_met(radius)
+        right = center_point_lng + fbd.tools.lon_from_met(radius)
 
-        scan_radius_step = (tools.lat_from_met(scan_radius),
-                            tools.lon_from_met(scan_radius))
+        scan_radius_step = (fbd.tools.lat_from_met(scan_radius),
+                            fbd.tools.lon_from_met(scan_radius))
 
         lat = top
         lng = left
@@ -150,7 +148,7 @@ class Gatherer:
     def _get_events_simple(self, scan_radius, city, radius, keyword, limit, events_max, places_max):
         events = []
         places = []
-        city_coords = tools.get_coords(city)
+        city_coords = fbd.tools.get_coords(city)
         for point in tqdm.tqdm(
                 self._generate_points(radius, scan_radius, *city_coords),
                 total=self._num_iters(radius, scan_radius, *city_coords),
@@ -190,10 +188,10 @@ class Gatherer:
                         return events, places
         return events, places
 
-    def get_events_loc(self, scan_radius, city, radius, use_storage=True, **kwargs):
-        if not self.storage and use_storage:
+    def get_events_loc(self, scan_radius, city, radius, use_fbd.storage=True, **kwargs):
+        if not self.fbd.storage and use_fbd.storage:
             raise Exception(
-                'Gatherer: get_events_loc - Storage wasn\'t defined')
+                'Gatherer: get_events_loc - fbd.storage wasn\'t defined')
 
         self.logger.debug('Gatherer: Get events request, city = {0}, scan_r = {1}, radius = {2}'
                           .format(city, scan_radius, radius))
@@ -206,21 +204,21 @@ class Gatherer:
         events, places = self._get_events_simple(
             scan_radius, city, radius, keyword, limit, events_max, places_max)
 
-        if use_storage:
+        if use_fbd.storage:
             for p in tqdm.tqdm(places, desc='Saving places',
                                disable=self.disable_progressbar):
-                storage.save_place(p)
+                fbd.storage.save_place(p)
             for e in tqdm.tqdm(events, desc='Saving events',
                                disable=self.disable_progressbar):
-                storage.save_event(e)
+                fbd.storage.save_event(e)
             return places, events
         else:
             return places, events
 
-    def get_place_from_id(self, place_id, use_storage=True):
-        if not self.storage and use_storage:
+    def get_place_from_id(self, place_id, use_fbd.storage=True):
+        if not self.fbd.storage and use_fbd.storage:
             raise Exception(
-                'Gatherer: get_events_loc - Storage wasn\'t defined')
+                'Gatherer: get_events_loc - fbd.storage wasn\'t defined')
         self.logger.debug('Gatherer: Get place request, id={0}'
                           .format(place_id))
         params = {
@@ -232,8 +230,8 @@ class Gatherer:
         place = requests.get(
             'https://graph.facebook.com/v2.8/',
             params=params).json()[place_id]
-        if storage:
-            self.storage.update_place(place)
+        if fbd.storage:
+            self.fbd.storage.update_place(place)
             return place
 
     def get_page(self, page_id, get_posts=True):
@@ -242,10 +240,10 @@ class Gatherer:
                        '?fields=id,name,about,category,fan_count'
                        '&access_token={}')
         page = requests.get(request_str.format(page_id, self.token)).json()
-        self.storage.save_page(page)
+        self.fbd.storage.save_page(page)
         if get_posts:
             for post in self.get_posts(page['id']):
-                self.storage.save_post(post)
+                self.fbd.storage.save_post(post)
 
     def get_page_id(self, url):
         url = Gatherer._clean_url(url)
