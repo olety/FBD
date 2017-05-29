@@ -11,9 +11,6 @@ import sqlalchemy
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, validates
 
-# Project imports
-import tools
-
 Base = declarative_base()
 db = sqlalchemy.create_engine('sqlite:///db/fb.sqlite')
 
@@ -31,7 +28,7 @@ class Topic(Base):
     __tablename__ = 'Topic'
 
     def to_json(self):
-        return json.dumps(self.to_dict(), default=tools.default_json_serializer)
+        return json.dumps(self.to_dict(), default=default_json_serializer)
 
     def to_dict(self):
         return {'id': self.id, 'name': self.name}
@@ -57,7 +54,7 @@ class Place(Base):
     __tablename__ = 'Place'
 
     def to_json(self):
-        return json.dumps(self.to_dict(), default=tools.default_json_serializer)
+        return json.dumps(self.to_dict(), default=default_json_serializer)
 
     def to_dict(self):
         # IDEA: Add events=T/F flag?
@@ -117,7 +114,7 @@ class Event(Base):
     __tablename__ = 'Event'
 
     def to_json(self):
-        return json.dumps(self.to_dict(), default=tools.default_json_serializer)
+        return json.dumps(self.to_dict(), default=default_json_serializer)
 
     def to_dict(self):
         return {
@@ -289,6 +286,16 @@ except Exception as e:
 
 
 class Storage:
+    @staticmethod
+    def default_json_serializer(obj):
+        """JSON serializer for objects not supported by the default json package"""
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+        if isinstance(obj, Topic):
+            return obj.to_dict()
+        raise TypeError('{} type could not be serialized.'
+                        .format(type(obj)))
+
     def __init__(self):
         Session = sessionmaker()
         Session.configure(bind=db)
@@ -410,8 +417,8 @@ class Storage:
 
     def get_events_coords(self, lat, lon, distance=2000, date=datetime.datetime.today()):
 
-        dlat = tools.lat_from_met(distance)
-        dlon = tools.lon_from_met(distance)
+        dlat = lat_from_met(distance)
+        dlon = lon_from_met(distance)
 
         # Get the circle
         left, right = lon - dlon, lon + dlon
@@ -430,8 +437,8 @@ class Storage:
 
     def get_places_coords(self, lat, lon, distance=2000):
 
-        dlat = tools.lat_from_met(distance)
-        dlon = tools.lon_from_met(distance)
+        dlat = lat_from_met(distance)
+        dlon = lon_from_met(distance)
 
         # Get the circle
         left, right = lon - dlon, lon + dlon

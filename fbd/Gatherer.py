@@ -1,18 +1,14 @@
 #!/usr/local/bin/python3
 # STL imports
-import json
+# Package imports
 import logging
-import multiprocessing
 import sys
 import time
 
-# Package imports
 import requests
 import tqdm  # Progress bar
 
-# Project imports
-import tools
-from storage import Storage
+from . import tools
 
 
 class Gatherer:
@@ -296,57 +292,3 @@ class Gatherer:
         response = requests.get(request_str.format(post_id, self.token)).json()
         del response['id']
         return {item: response[item]['summary']['total_count'] for item in response}
-
-
-if __name__ == '__main__':
-    # Adding command line arguments
-    import argparse
-    argparser = argparse.ArgumentParser(
-        description='Updates the facebook database with new data')
-    argparser.add_argument('-up', '--update-places', dest='update_places', action='store_true',
-                           help='Update the place_type column in the table Places')
-    argparser.add_argument('-ue', '--update-events', dest='update_events', action='store_true',
-                           help='Update the Event database. Queries the API based on location specified in config.json')
-    argparser.add_argument('-v', '--verbose', dest='verbose', action='store_true',
-                           help='Enable DEBUG verbosity mode.')
-    args = argparser.parse_args()
-
-    # Print help if user didn't provide any arguments
-    if len(sys.argv) == 1:
-        argparser.print_help()
-        sys.exit(0)
-
-    # Configuring the logger
-    if args.verbose:
-        logging.basicConfig(level=logging.DEBUG)
-        log = logging
-    else:
-        log = logging.getLogger(__name__)
-        log.setLevel(logging.INFO)
-        log.addHandler(logging.StreamHandler())
-
-    # IDEA: Use multiprocessing
-    # Handling flags -up, --update-places
-    if args.update_places:
-        with open('config.json', 'r') as f:
-            params = json.load(f)
-        storage = Storage()
-        gatherer = Gatherer(params['client_id'], params['client_secret'],
-                            storage=storage, logger=log, disable_progressbar=args.verbose)
-        for place_id in tqdm.tqdm(storage.get_all_place_ids(), desc='Processing places',
-                                  disable=args.verbose):
-            gatherer.get_place_from_id(place_id)
-
-    # Handling flags -ue, --update-events
-    if args.update_events:
-        with open('config.json', 'r') as f:
-            params = json.load(f)
-
-        storage = Storage()
-        gatherer = Gatherer(params['client_id'], params['client_secret'],
-                            storage=storage, logger=log, disable_progressbar=args.verbose)
-        gatherer.get_events_loc(params['scan_radius'], params['city'], params['radius'],
-                                keyword=params['keyword'], places_max=params['places_max'],
-                                limit=params['limit'], events_max=params['events_max'])
-
-    # print(gatherer.get_posts(gatherer.get_page_id('https://web.facebook.com/cnn/')))

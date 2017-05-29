@@ -6,10 +6,16 @@ import os
 
 # Package imports
 import gmplot
+import matplotlib.pyplot as plt
 import numpy as np
+from bokeh.io import output_file, show
+from bokeh.models import (BoxSelectTool, Circle, ColumnDataSource, DataRange1d,
+                          GMapOptions, GMapPlot, PanTool, WheelZoomTool)
+from bokeh.plotting import figure
+from sqlalchemy import desc, func
 
 # Project imports
-from storage import Event, Place, Storage
+from .storage import Event, Place, Storage
 
 
 class Visualizer:
@@ -24,8 +30,6 @@ class Visualizer:
         return fpath
 
     def plot_event_count(self, top=5):
-        from sqlalchemy import func, desc
-        import matplotlib.pyplot as plt
 
         logging.debug('Visualizer - plot_event_count: Getting the data')
         to_plot = self.storage.session.query(
@@ -70,12 +74,6 @@ class Visualizer:
         gmap.draw(self._get_fpath(filename, delete_old=True))
 
     def plot_gmaps_bokeh(self, api_key, filename='vis_out/bokeh.html'):
-        from bokeh.io import output_file, show
-        from bokeh.plotting import figure
-        from bokeh.models import (
-            GMapPlot, GMapOptions, DataRange1d, ColumnDataSource, Circle, PanTool, WheelZoomTool, BoxSelectTool
-        )
-        import tools
 
         lats = []
         lngs = []
