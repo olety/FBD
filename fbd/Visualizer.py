@@ -1,9 +1,15 @@
 #!/usr/local/bin/python3
-import gmplot
+# STL imports
+import json
 import logging
 import os
+
+# Package imports
+import gmplot
 import numpy as np
-from storage import Storage, Place, Event
+
+# Project imports
+from storage import Event, Place, Storage
 
 
 class Visualizer:
@@ -44,8 +50,7 @@ class Visualizer:
         logging.debug('Visualizer - plot_event_count: Showing the plot')
         plt.show()
 
-    def plot_gmaps(self, filename='gmap.html'):
-        # TODO: Add filters and popups to the generated plot
+    def plot_gmaps(self, filename='vis_out/gmap.html'):
         logging.debug('Visualizer - gmaps_plot: Requesting location')
         gmap = gmplot.GoogleMapPlotter.from_geocode('Wrocław')
         lats = []
@@ -64,10 +69,67 @@ class Visualizer:
         logging.debug('Visualizer - gmaps_plot: Started drawing')
         gmap.draw(self._get_fpath(filename, delete_old=True))
 
+    def plot_gmaps_bokeh(self, api_key, filename='vis_out/bokeh.html'):
+        from bokeh.io import output_file, show
+        from bokeh.plotting import figure
+        from bokeh.models import (
+            GMapPlot, GMapOptions, DataRange1d, ColumnDataSource, Circle, PanTool, WheelZoomTool, BoxSelectTool
+        )
+        import tools
+
+        lats = []
+        lngs = []
+        labels = []
+        for place in self.storage.session.query(Place).all():
+            for i in range(len(place.events)):
+                lats.append(place.lat)
+                lngs.append(place.lon)
+                if place.topics:
+                    labels.append(place.topics[0].name)
+                else:
+                    labels.append('Unknown')
+        # TODO: Implement google map visualization
+        # get top 4 place types
+        # go from there
+        # lat, lon = tools.get_coords('Wrocław')
+
+        # map_options = GMapOptions(
+            # lat=51.1, lng=17.03333, map_type="roadmap", zoom=11)
+
+        # plot = GMapPlot(
+        #     x_range=DataRange1d(), y_range=DataRange1d(), map_options=map_options, labels=labels
+        # )
+        # plot.title.text = "Wroclaw"
+
+        # plot.api_key = api_key
+
+        source = ColumnDataSource(
+            data=dict(
+                lat=lats,
+                lon=lngs,
+            )
+        )
+
+        p = figure(tools=['tap'])
+
+        circle = Scatter(x='lon', y='lat', size=15,
+                         fill_color="blue", fill_alpha=0.8, line_color=None,
+                         legend=labels)
+        p.add_glyph(source, circle)
+
+        p.legend.location = "top_left"
+        p.legend.click_policy = "hide"
+        # output_file(filename)
+        show(p)
+
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
+    with open('google_api.json', 'r') as f:
+        key = json.load(f)['key']
+
     s = Storage()
     v = Visualizer(s)
-    v.plot_gmaps()
+    # v.plot_gmaps()
+    v.plot_gmaps_bokeh(key)
     # v.plot_event_count()

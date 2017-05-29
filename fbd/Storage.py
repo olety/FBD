@@ -1,18 +1,21 @@
 #!/usr/local/bin/python3
-import sqlalchemy
+# STL imports
+import datetime
+import json
 import logging
+import pprint
+
+# Package imports
 import dateutil.parser
-# import datetime
+import sqlalchemy
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship, validates
+from sqlalchemy.orm import relationship, sessionmaker, validates
+
+# Project imports
+import tools
+
 Base = declarative_base()
 db = sqlalchemy.create_engine('sqlite:///db/fb.sqlite')
-
-# TODO: Implement datetime conversion inside of the classes when converting to JSON
-# def datetime_handler(x):
-#     if isinstance(x, datetime.datetime):
-#         return x.isoformat()
-#     raise TypeError("Unknown type")
 
 
 place_topic = sqlalchemy.Table(
@@ -28,12 +31,10 @@ class Topic(Base):
     __tablename__ = 'Topic'
 
     def to_json(self):
-        # TODO: Implement JSON conversion
-        pass
+        return json.dumps(self.to_dict(), default=tools.default_json_serializer)
 
     def to_dict(self):
-        # TODO: Implement dictionary conversion
-        pass
+        return {'id': self.id, 'name': self.name}
 
     id = sqlalchemy.Column(sqlalchemy.String(200), primary_key=True)
     name = sqlalchemy.Column(sqlalchemy.String(100))
@@ -56,12 +57,23 @@ class Place(Base):
     __tablename__ = 'Place'
 
     def to_json(self):
-        # TODO: Implement JSON conversion
-        pass
+        return json.dumps(self.to_dict(), default=tools.default_json_serializer)
 
     def to_dict(self):
-        # TODO: Implement dictionary conversion
-        pass
+        # IDEA: Add events=T/F flag?
+        # IDEA: Auto-generate fields?
+        return {
+            'id': self.id,
+            'name': self.name,
+            'ptype': self.ptype,
+            'topics': [topic for topic in self.topics],
+            'city': self.city,
+            'country': self.country,
+            'lat': self.lat,
+            'lon': self.lon,
+            'street': self.street,
+            'zip': self.zip,
+        }
 
     id = sqlalchemy.Column(sqlalchemy.String(200), primary_key=True)
     name = sqlalchemy.Column(sqlalchemy.String(100))
@@ -105,12 +117,18 @@ class Event(Base):
     __tablename__ = 'Event'
 
     def to_json(self):
-        # TODO: Implement JSON conversion
-        pass
+        return json.dumps(self.to_dict(), default=tools.default_json_serializer)
 
     def to_dict(self):
-        # TODO: Implement dictionary conversion
-        pass
+        return {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+            'start_time': self.start_time,
+            'place_id': self.place_id,
+            'picture_url': self.picture_url,
+            'ticket_url': self.ticket_url,
+        }
 
     id = sqlalchemy.Column(sqlalchemy.String(200), primary_key=True)
     description = sqlalchemy.Column(sqlalchemy.String(10000))
@@ -137,22 +155,23 @@ class Event(Base):
             return 'None'
         return value
 
-    def __init__(self, id, desc, name, pic_url, tick_url, start_time, place_id):
+    def __init__(self, id, desc, name, picture_url, ticket_url, start_time, place_id):
         self.id = id
-        self.description = desc
         self.name = name
-        self.picture_url = pic_url
-        self.ticket_url = tick_url
+        self.description = desc
         self.start_time = start_time
         self.place_id = place_id
+        self.picture_url = picture_url
+        self.ticket_url = ticket_url
 
     def __repr__(self):
-        return '<Event {} - {}>'.format(self.id, self.name)
+        return '<Event {} - {}>\n{}'.format(self.id, self.name,
+                                            pprint.ppformat(self.to_dict()))
 
     def __str__(self):
-        return '<Event {} - {}>'.format(self.id, self.name)
+        return pprint.ppformat(self.to_dict())
 
-#
+# TODO: Implement 'Page' class
 # class Page(Base):
 #     __tablename__ = 'Page'
 #     id = sqlalchemy.Column(sqlalchemy.String(50), primary_key=True)
@@ -207,7 +226,7 @@ class Event(Base):
 #         return '<Post {} - {}>'.format(self.id, self.message[:25])
 
 
-#
+# TODO: Implement 'Post' class
 # class Post(Base):
 #     __tablename__ = 'Post'
 #     id = sqlalchemy.Column(sqlalchemy.String(50), primary_key=True)
@@ -280,9 +299,9 @@ class Storage:
         try:
             event = Event(id=event.get('id', '0'), desc=event.get('description', 'None'),
                           name=event.get('name', 'Unnamed'),
-                          pic_url=event.get('picture', {}).get(
+                          picture_url=event.get('picture', {}).get(
                               'data', {}).get('url', 'None'),
-                          tick_url=event.get('ticket_uri', 'None'), place_id=event.get('place_id', '0'),
+                          ticket_url=event.get('ticket_uri', 'None'), place_id=event.get('place_id', '0'),
                           start_time=dateutil.parser.parse(event.get('start_time', '2017-04-07T16:00:00+0200')))
             self.session.add(event)
             if commit:
@@ -309,7 +328,7 @@ class Storage:
         try:
             place_loc = place.get('location', {})
             topic_list = []
-            # IDEA: Move this to the place and pass in a string list
+            # IDEA: Move this to the place class and pass in a string list
             if place.get('place_topics', None):
                 for topic in place['place_topics'].get('data'):
                     topic_list.append(self.save_topic(topic_dict={'name': topic['name'],
@@ -329,7 +348,7 @@ class Storage:
         try:
             logging.debug('Storage: update_place request, place = {0}'
                           .format(place))
-            # IDEA: Move this to the place and pass in a string list
+            # IDEA: Move this to the place class and pass in a string list
             if self.place_exists(place['id']):
                 place_loc = place.get('location', {})
                 topic_list = []
@@ -363,7 +382,10 @@ class Storage:
         pass
 
     def get_all_place_ids(self):
-        return [id_[0] for id_ in self.session.query(Place.id).all()]
+        return [id[0] for id in self.session.query(Place.id).all()]
+
+    def get_all_event_ids(self):
+        return [id[0] for id in self.session.query(Event.id).all()]
 
     def get_place(self, place_id):
         return self.session.query(Place).filter_by(id=place_id).scalar()
@@ -372,17 +394,58 @@ class Storage:
         return self.session.query(Topic).filter_by(id=topic_id).scalar()
 
     def topic_exists(self, topic_id):
-        return True if self.session.query(Topic.id).filter_by(id=topic_id).scalar() is not None else False
+        return (True if self.session.query(Topic.id).filter_by(id=topic_id).scalar()
+                is not None else False)
 
     def place_exists(self, place_id):
-        return True if self.session.query(Place.id).filter_by(id=place_id).scalar() is not None else False
+        return (True if self.session.query(Place.id).filter_by(id=place_id).scalar()
+                is not None else False)
 
     def get_event(self, event_id):
         return self.session.query(Event).filter_by(id=event_id).scalar()
 
     def event_exists(self, event_id):
-        return True if self.session.query(Event.id).filter_by(id=event_id).scalar() is not None else False
+        return (True if self.session.query(Event.id).filter_by(id=event_id).scalar()
+                is not None else False)
+
+    def get_events_coords(self, lat, lon, distance=2000, date=datetime.datetime.today()):
+
+        dlat = tools.lat_from_met(distance)
+        dlon = tools.lon_from_met(distance)
+
+        # Get the circle
+        left, right = lon - dlon, lon + dlon
+        bottom, top = lat - dlat, lat + dlat
+
+        places = (self.session.query(Place)
+                  .filter(Place.lat >= bottom)
+                  .filter(Place.lat <= top)
+                  .filter(Place.lon >= left)
+                  .filter(Place.lon <= right).all())
+
+        events = [event.to_dict() for place in places for event in place.events
+                  if event.start_time > date]
+
+        return events
+
+    def get_places_coords(self, lat, lon, distance=2000):
+
+        dlat = tools.lat_from_met(distance)
+        dlon = tools.lon_from_met(distance)
+
+        # Get the circle
+        left, right = lon - dlon, lon + dlon
+        bottom, top = lat - dlat, lat + dlat
+
+        places = (self.session.query(Place)
+                  .filter(Place.lat >= bottom)
+                  .filter(Place.lat <= top)
+                  .filter(Place.lon >= left)
+                  .filter(Place.lon <= right).all())
+
+        return places
 
 
 if __name__ == '__main__':
     s = Storage()
+    pprint.pprint(s.get_events_coords(51.1, 17.01))
