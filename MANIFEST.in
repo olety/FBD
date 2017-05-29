@@ -1,14 +1,7 @@
-<<<<<<< HEAD
 include LICENSE
 include README.md
 include fbd/migrate
-=======
->>>>>>> d8d82e0b7e75a4987996c3d3ef8972696968efc2
 include fbd/migrations/*
-include fbd/config.json.example
+include bin/config.json.example
 include fbd/google_api.json.example
 include fbd/alembic.ini.example
-<<<<<<< HEAD
-=======
-include fbd/migrate
->>>>>>> d8d82e0b7e75a4987996c3d3ef8972696968efc2
