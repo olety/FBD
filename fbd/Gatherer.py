@@ -1,18 +1,22 @@
 #!/usr/local/bin/python3
+# STL imports
+import json
+import logging
+import multiprocessing
 import sys
 import time
-import json
-import tqdm  # Progress bar
-import logging
+
+# Package imports
 import requests
-import geocoder
-# import multiprocessing
+import tqdm  # Progress bar
+
+# Project imports
+import tools
 from storage import Storage
 
 
 class Gatherer:
-    LAT_PER_100M = 0.001622 / 1.8
-    LONG_PER_100M = 0.005083 / 5.5
+    # TODO: Move to numpy arrays / DFs?
 
     def __init__(self, client_id, client_secret, storage=None, logger=None, disable_progressbar=False):
         if not logger:
@@ -38,18 +42,6 @@ class Gatherer:
         self.logger.debug('Gatherer: Initialized')
         self.storage = storage
         self.disable_progressbar = disable_progressbar
-
-    @staticmethod
-    def lat_from_met(met):
-        return Gatherer.LAT_PER_100M * met / 100.0
-
-    @staticmethod
-    def long_from_met(met):
-        return Gatherer.LONG_PER_100M * met / 100
-
-    @staticmethod
-    def _get_coords(city):
-        return geocoder.google(city).latlng
 
     @staticmethod
     def _clean_url(url):
@@ -79,16 +71,19 @@ class Gatherer:
     # Generator
     @staticmethod
     def _generate_points(radius, scan_radius, center_point_lat, center_point_lng):
-        top = center_point_lat + Gatherer.lat_from_met(radius)
-        bottom = center_point_lat - Gatherer.lat_from_met(radius)
-        left = center_point_lng - Gatherer.long_from_met(radius)
-        right = center_point_lng + Gatherer.long_from_met(radius)
+        # Defining the general square bounds
+        top = center_point_lat + tools.lat_from_met(radius)
+        bottom = center_point_lat - tools.lat_from_met(radius)
+        left = center_point_lng - tools.lon_from_met(radius)
+        right = center_point_lng + tools.lon_from_met(radius)
 
-        scan_radius_step = (Gatherer.lat_from_met(scan_radius),
-                            Gatherer.long_from_met(scan_radius))
+        scan_radius_step = (tools.lat_from_met(scan_radius),
+                            tools.lon_from_met(scan_radius))
 
         lat = top
         lng = left
+
+        # Iterating by small circles from top->bottom from left->right
         while lat > bottom:
             while lng < right:
                 yield (lat, lng)
@@ -98,28 +93,14 @@ class Gatherer:
 
     @staticmethod
     def _num_iters(radius, scan_radius, center_point_lat, center_point_lng):
-        top = center_point_lat + Gatherer.lat_from_met(radius)
-        bottom = center_point_lat - Gatherer.lat_from_met(radius)
-
-        left = center_point_lng - Gatherer.long_from_met(radius)
-        right = center_point_lng + Gatherer.long_from_met(radius)
-
-        scan_radius_step = (Gatherer.lat_from_met(scan_radius),
-                            Gatherer.long_from_met(scan_radius))
-        count = 0
-        lat = top
-        lng = left
-
-        while lat > bottom:
-            while lng < right:
-                count += 1
-                lng += scan_radius_step[1]
-            lng = left
-            lat -= scan_radius_step[0]
-
-        return count
+        # Exhaust the _generate_points generator and count the # circles
+        return len([x for x, _ in
+                    Gatherer._generate_points(radius, scan_radius,
+                                              center_point_lat,
+                                              center_point_lng)])
 
     def _exit(self):
+        self.logger.info('Gatherer - _exit: EXITING APPLICATION')
         sys.exit(0)
 
     # Does not return None values
@@ -170,11 +151,10 @@ class Gatherer:
             print(e)
             return None
 
-    def _get_events_simple(self, scan_radius, city, radius, keyword, limit, events_max, pages_max):
-        i = 0
+    def _get_events_simple(self, scan_radius, city, radius, keyword, limit, events_max, places_max):
         events = []
         places = []
-        city_coords = Gatherer._get_coords(city)
+        city_coords = tools.get_coords(city)
         for point in tqdm.tqdm(
                 self._generate_points(radius, scan_radius, *city_coords),
                 total=self._num_iters(radius, scan_radius, *city_coords),
@@ -192,21 +172,23 @@ class Gatherer:
                 if place_events and 'events' in place_events:
                     for event in place_events['events']['data']:
                         place = event.get('place', None)
-                        if place:
+                        if place and place.get('id'):
                             self.logger.debug(
                                 'Gatherer - Events: Processing place {0}'.format(place))
-                            if place not in places:
-                                places.append(place)
-                                i += 1
+                            # Removing an 'in' check (complexity = O(n) -> O(1))
+                            # But this increases required memory
+                            places.append(place)
                             self.logger.debug(
                                 'Gatherer - Events: Adding event {0}'.format(events))
-                            event['place_id'] = place.get('id', '0')
+                            event['place_id'] = place.get('id')
+                            # Switching to sets/fdicts from lists to avoid an
+                            # 'in' check (complexity = O(n) -> O(1))
                             events.append(event)
                             self.logger.debug('Gatherer - Events: Processed {} places with {} events...'.format(
                                 len(places), len(events)))
                             if len(events) >= events_max:
                                 return events, places
-                    if i >= pages_max:
+                    if len(places) >= places_max:
                         self.logger.info(
                             'Gatherer - Events: Processed >=max pages, stopping...')
                         return events, places
@@ -220,13 +202,13 @@ class Gatherer:
         self.logger.debug('Gatherer: Get events request, city = {0}, scan_r = {1}, radius = {2}'
                           .format(city, scan_radius, radius))
 
-        pages_max = kwargs.get('pages_max', 5)
+        places_max = kwargs.get('places_max', 5)
         events_max = kwargs.get('events_max', 30)
         keyword = kwargs.get('keyword', '*')
         limit = kwargs.get('limit', '')
 
         events, places = self._get_events_simple(
-            scan_radius, city, radius, keyword, limit, events_max, pages_max)
+            scan_radius, city, radius, keyword, limit, events_max, places_max)
 
         if use_storage:
             for p in tqdm.tqdm(places, desc='Saving places',
@@ -343,6 +325,7 @@ if __name__ == '__main__':
         log.setLevel(logging.INFO)
         log.addHandler(logging.StreamHandler())
 
+    # IDEA: Use multiprocessing
     # Handling flags -up, --update-places
     if args.update_places:
         with open('config.json', 'r') as f:
@@ -363,7 +346,7 @@ if __name__ == '__main__':
         gatherer = Gatherer(params['client_id'], params['client_secret'],
                             storage=storage, logger=log, disable_progressbar=args.verbose)
         gatherer.get_events_loc(params['scan_radius'], params['city'], params['radius'],
-                                keyword=params['keyword'], pages_max=params['pages_max'],
+                                keyword=params['keyword'], places_max=params['places_max'],
                                 limit=params['limit'], events_max=params['events_max'])
 
     # print(gatherer.get_posts(gatherer.get_page_id('https://web.facebook.com/cnn/')))
