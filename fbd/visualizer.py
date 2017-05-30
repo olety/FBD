@@ -15,7 +15,7 @@ from bokeh.plotting import figure
 from sqlalchemy import desc, func
 
 # Project imports
-from .storage import Event, Place, Storage
+from fbd.storage import Event, Place, Storage
 
 
 class Visualizer:

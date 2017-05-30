@@ -8,7 +8,7 @@ def readme():
 
 setup(
     name='fbd',
-    version='0.0.1b25',
+    version='0.0.1b33',
     description='Facebook data gatherer and analyzer',
     long_description=readme(),
     classifiers=[

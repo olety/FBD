@@ -11,8 +11,9 @@ import sqlalchemy
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, validates
 
+import fbd.tools
+
 Base = declarative_base()
-db = sqlalchemy.create_engine('sqlite:///db/fb.sqlite')
 
 
 place_topic = sqlalchemy.Table(
@@ -28,7 +29,7 @@ class Topic(Base):
     __tablename__ = 'Topic'
 
     def to_json(self):
-        return json.dumps(self.to_dict(), default=default_json_serializer)
+        return json.dumps(self.to_dict(), default=Storage.default_json_serializer)
 
     def to_dict(self):
         return {'id': self.id, 'name': self.name}
@@ -54,7 +55,7 @@ class Place(Base):
     __tablename__ = 'Place'
 
     def to_json(self):
-        return json.dumps(self.to_dict(), default=default_json_serializer)
+        return json.dumps(self.to_dict(), default=Storage.default_json_serializer)
 
     def to_dict(self):
         # IDEA: Add events=T/F flag?
@@ -114,7 +115,7 @@ class Event(Base):
     __tablename__ = 'Event'
 
     def to_json(self):
-        return json.dumps(self.to_dict(), default=default_json_serializer)
+        return json.dumps(self.to_dict(), default=Storage.default_json_serializer)
 
     def to_dict(self):
         return {
@@ -278,12 +279,6 @@ class Event(Base):
 #         return '<Post {} - {}>'.format(self.id, self.message[:25])
 #
 #
-try:
-    Base.metadata.create_all(db)
-except Exception as e:
-    logging.debug(e)
-    pass
-
 
 class Storage:
     @staticmethod
@@ -296,11 +291,16 @@ class Storage:
         raise TypeError('{} type could not be serialized.'
                         .format(type(obj)))
 
-    def __init__(self):
+    def __init__(self, db_url='sqlite:///db/fb.sqlite'):
+        self.db = sqlalchemy.create_engine(db_url)
+        try:
+            Base.metadata.create_all(self.db)
+        except Exception as e:
+            logging.debug(e)
+            pass
         Session = sessionmaker()
-        Session.configure(bind=db)
+        Session.configure(bind=self.db)
         self.session = Session()
-        self.db = db
 
     def save_event(self, event, commit=True):
         try:
@@ -417,8 +417,8 @@ class Storage:
 
     def get_events_coords(self, lat, lon, distance=2000, date=datetime.datetime.today()):
 
-        dlat = lat_from_met(distance)
-        dlon = lon_from_met(distance)
+        dlat = fbd.tools.lat_from_met(distance)
+        dlon = fbd.tools.lon_from_met(distance)
 
         # Get the circle
         left, right = lon - dlon, lon + dlon
@@ -437,8 +437,8 @@ class Storage:
 
     def get_places_coords(self, lat, lon, distance=2000):
 
-        dlat = lat_from_met(distance)
-        dlon = lon_from_met(distance)
+        dlat = fbd.tools.lat_from_met(distance)
+        dlon = fbd.tools.lon_from_met(distance)
 
         # Get the circle
         left, right = lon - dlon, lon + dlon

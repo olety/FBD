@@ -1,4 +1,4 @@
-from . import gatherer, storage, tools, visualizer
-from .gatherer import Gatherer
-from .storage import Storage
-from .visualizer import Visualizer
+from fbd import gatherer, storage, tools, visualizer
+from fbd.gatherer import Gatherer
+from fbd.storage import Storage
+from fbd.visualizer import Visualizer
