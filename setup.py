@@ -8,14 +8,14 @@ def readme():
 
 setup(
     name='fbd',
-    version='0.0.1b34',
+    version='0.0.2b2',
     description='Facebook data gatherer and analyzer',
     long_description=readme(),
     classifiers=[
-            'Development Status :: 2 - Pre-Alpha',
-            'License :: OSI Approved :: MIT License',
-            'Programming Language :: Python :: 3.6',
-            'Topic :: Other/Nonlisted Topic'
+        'Development Status :: 2 - Pre-Alpha',
+        'License :: OSI Approved :: MIT License',
+        'Programming Language :: Python :: 3.6',
+        'Topic :: Other/Nonlisted Topic'
     ],
     url='https://github.com/olety/FBD',
     author='Oleksii Kyrylchuk',
@@ -23,7 +23,21 @@ setup(
     license='MIT',
     packages=['fbd'],
     scripts=['bin/fbd-gather'],
-    install_requires=['requests', 'gmplot', 'geocoder', 'alembic', 'bokeh', 'matplotlib',
-                      'tqdm', 'setuptools', 'SQLAlchemy', 'numpy', 'python_dateutil'],
+    install_requires=[
+        'setuptools',
+        'SQLAlchemy',
+        'alembic',
+        'requests',
+        'async_timeout',
+        'gmplot',
+        'bokeh',
+        'tqdm',
+        'numpy',
+        'geopy',
+        'matplotlib',
+        'aiohttp',
+        'python_dateutil',
+    ],
     include_package_data=True,
-    zip_safe=False)
+    zip_safe=False,
+)

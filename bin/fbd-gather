@@ -26,7 +26,7 @@ if __name__ == '__main__':
     argparser.add_argument(
         '-ue', '--get-events', dest='get_events', action='store_true',
         help='Populate the Event database based on the existing places.')
-    parser.add_argument('-mc', '--max-concurrent', dest='max_concurrent',
+    argparser.add_argument('-mc', '--max-concurrent', dest='max_concurrent',
                         action='store', type=int, default=3,
                         help='Maximal number of concurrent requestss. Default 3'
                        )
