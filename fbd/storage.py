@@ -15,29 +15,28 @@ import fbd.tools
 
 Base = declarative_base()
 
-
-place_topic = sqlalchemy.Table(
-    'Place_Topic', Base.metadata,
-    sqlalchemy.Column('place_id', sqlalchemy.String,
-                      sqlalchemy.ForeignKey('Place.id')),
-    sqlalchemy.Column('topic_id', sqlalchemy.String,
-                      sqlalchemy.ForeignKey('Topic.id'))
-)
+place_topic = sqlalchemy.Table('Place_Topic', Base.metadata,
+                               sqlalchemy.Column('place_id', sqlalchemy.String,
+                                                 sqlalchemy.ForeignKey(
+                                                     'Place.id')),
+                               sqlalchemy.Column('topic_id', sqlalchemy.String,
+                                                 sqlalchemy.ForeignKey(
+                                                     'Topic.id')))
 
 
 class Topic(Base):
     __tablename__ = 'Topic'
 
     def to_json(self):
-        return json.dumps(self.to_dict(), default=Storage.default_json_serializer)
+        return json.dumps(self.to_dict(),
+                          default=Storage.default_json_serializer)
 
     def to_dict(self):
         return {'id': self.id, 'name': self.name}
 
     id = sqlalchemy.Column(sqlalchemy.String(200), primary_key=True)
     name = sqlalchemy.Column(sqlalchemy.String(100))
-    places = relationship('Place',
-                          secondary=place_topic)
+    places = relationship('Place', secondary=place_topic)
 
     @validates('name')
     def validate_trunc(self, key, value):
@@ -55,7 +54,8 @@ class Place(Base):
     __tablename__ = 'Place'
 
     def to_json(self):
-        return json.dumps(self.to_dict(), default=Storage.default_json_serializer)
+        return json.dumps(self.to_dict(),
+                          default=Storage.default_json_serializer)
 
     def to_dict(self):
         # IDEA: Add events=T/F flag?
@@ -64,7 +64,7 @@ class Place(Base):
             'id': self.id,
             'name': self.name,
             'ptype': self.ptype,
-            'topics': [topic for topic in self.topics],
+            'topics': [topic.to_dict() for topic in self.topics],
             'city': self.city,
             'country': self.country,
             'lat': self.lat,
@@ -81,8 +81,7 @@ class Place(Base):
     lat = sqlalchemy.Column(sqlalchemy.Float())
     lon = sqlalchemy.Column(sqlalchemy.Float())
     street = sqlalchemy.Column(sqlalchemy.String(100))
-    topics = relationship('Topic',
-                          secondary=place_topic)
+    topics = relationship('Topic', secondary=place_topic)
     zip = sqlalchemy.Column(sqlalchemy.String(6))
 
     @validates('name', 'ptype', 'street', 'country', 'zip')
@@ -92,7 +91,8 @@ class Place(Base):
             return value[:max_len]
         return value
 
-    def __init__(self, id, name, topics, ptype, city, country, lat, lon, street, zip):
+    def __init__(self, id, name, topics, ptype, city, country, lat, lon, street,
+                 zip):
         self.id = id
         self.name = name
         self.ptype = ptype
@@ -115,7 +115,8 @@ class Event(Base):
     __tablename__ = 'Event'
 
     def to_json(self):
-        return json.dumps(self.to_dict(), default=Storage.default_json_serializer)
+        return json.dumps(self.to_dict(),
+                          default=Storage.default_json_serializer)
 
     def to_dict(self):
         return {
@@ -135,8 +136,8 @@ class Event(Base):
     ticket_url = sqlalchemy.Column(sqlalchemy.String(150))
     start_time = sqlalchemy.Column(sqlalchemy.DateTime)
 
-    place_id = sqlalchemy.Column(sqlalchemy.String(
-        50), sqlalchemy.ForeignKey('Place.id'))
+    place_id = sqlalchemy.Column(
+        sqlalchemy.String(50), sqlalchemy.ForeignKey('Place.id'))
     place = relationship('Place', backref='events', foreign_keys=[place_id])
 
     @validates('description', 'name')
@@ -153,7 +154,8 @@ class Event(Base):
             return 'None'
         return value
 
-    def __init__(self, id, desc, name, picture_url, ticket_url, start_time, place_id):
+    def __init__(self, id, desc, name, picture_url, ticket_url, start_time,
+                 place_id):
         self.id = id
         self.name = name
         self.description = desc
@@ -164,10 +166,11 @@ class Event(Base):
 
     def __repr__(self):
         return '<Event {} - {}>\n{}'.format(self.id, self.name,
-                                            pprint.ppformat(self.to_dict()))
+                                            pprint.pformat(self.to_dict()))
 
     def __str__(self):
-        return pprint.ppformat(self.to_dict())
+        return pprint.pformat(self.to_dict())
+
 
 # TODO: Implement 'Page' class
 # class Page(Base):
@@ -222,7 +225,6 @@ class Event(Base):
 #
 #     def __str__(self):
 #         return '<Post {} - {}>'.format(self.id, self.message[:25])
-
 
 # TODO: Implement 'Post' class
 # class Post(Base):
@@ -280,16 +282,18 @@ class Event(Base):
 #
 #
 
+
 class Storage:
+
     @staticmethod
     def default_json_serializer(obj):
         """JSON serializer for objects not supported by the default json package"""
         if isinstance(obj, datetime.datetime):
             return obj.isoformat()
-        if isinstance(obj, Topic):
+        if isinstance(obj, Topic) or isinstance(obj, Place) or isinstance(
+                obj, Event):
             return obj.to_dict()
-        raise TypeError('{} type could not be serialized.'
-                        .format(type(obj)))
+        raise TypeError('{} type could not be serialized.'.format(type(obj)))
 
     def __init__(self, db_url='sqlite:///db/fb.sqlite'):
         self.db = sqlalchemy.create_engine(db_url)
@@ -304,12 +308,17 @@ class Storage:
 
     def save_event(self, event, commit=True):
         try:
-            event = Event(id=event.get('id', '0'), desc=event.get('description', 'None'),
+            event = Event(id=event.get('id', '0'),
+                          desc=event.get('description', 'None'),
                           name=event.get('name', 'Unnamed'),
-                          picture_url=event.get('picture', {}).get(
-                              'data', {}).get('url', 'None'),
-                          ticket_url=event.get('ticket_uri', 'None'), place_id=event.get('place_id', '0'),
-                          start_time=dateutil.parser.parse(event.get('start_time', '2017-04-07T16:00:00+0200')))
+                          picture_url=event.get('picture',
+                                                {}).get('data',
+                                                        {}).get('url', 'None'),
+                          ticket_url=event.get('ticket_uri', 'None'),
+                          place_id=event.get('place_id', '0'),
+                          start_time=dateutil.parser.parse(
+                              event.get('start_time',
+                                        '2017-04-07T16:00:00+0200')))
             self.session.add(event)
             if commit:
                 self.session.commit()
@@ -321,8 +330,7 @@ class Storage:
         try:
             if self.topic_exists(topic_dict.get('id')):
                 return self.get_topic(topic_dict.get('id'))
-            topic = Topic(id=topic_dict.get('id'),
-                          name=topic_dict.get('name'))
+            topic = Topic(id=topic_dict.get('id'), name=topic_dict.get('name'))
             self.session.add(topic)
             if commit:
                 self.session.commit()
@@ -338,12 +346,19 @@ class Storage:
             # IDEA: Move this to the place class and pass in a string list
             if place.get('place_topics', None):
                 for topic in place['place_topics'].get('data'):
-                    topic_list.append(self.save_topic(topic_dict={'name': topic['name'],
-                                                                  'id': topic['id']}))
-            place = Place(id=place.get('id', '0'), topics=topic_list, ptype=place.get('place_type', 'UNKNOWN'), name=place.get('name', 'Unnamed'),
-                          city=place_loc.get('city', 'Wroclaw'), country=place_loc.get('country', 'Poland'),
-                          lat=place_loc.get('latitude', 0.0), lon=place_loc.get('longitude', 0.0),
-                          street=place_loc.get('street', 'Unknown'), zip=place_loc.get('zip', '00-000'))
+                    topic_list.append(
+                        self.save_topic(topic_dict={
+                            'name': topic['name'], 'id': topic['id']
+                        }))
+            place = Place(id=place.get('id', '0'), topics=topic_list,
+                          ptype=place.get('place_type', 'UNKNOWN'),
+                          name=place.get('name', 'Unnamed'),
+                          city=place_loc.get('city', 'Wroclaw'),
+                          country=place_loc.get('country', 'Poland'),
+                          lat=place_loc.get('latitude', 0.0),
+                          lon=place_loc.get('longitude', 0.0),
+                          street=place_loc.get('street', 'Unknown'),
+                          zip=place_loc.get('zip', '00-000'))
             self.session.add(place)
             if commit:
                 self.session.commit()
@@ -361,8 +376,10 @@ class Storage:
                 topic_list = []
                 if place.get('place_topics', None):
                     for topic in place['place_topics'].get('data'):
-                        topic_list.append(self.save_topic(topic_dict={'name': topic['name'],
-                                                                      'id': topic['id']}))
+                        topic_list.append(
+                            self.save_topic(topic_dict={
+                                'name': topic['name'], 'id': topic['id']
+                            }))
                 old_place = self.get_place(place['id'])
                 old_place.topics = topic_list
                 old_place.ptype = place['place_type']
@@ -394,6 +411,9 @@ class Storage:
     def get_all_event_ids(self):
         return [id[0] for id in self.session.query(Event.id).all()]
 
+    def get_all_topic_ids(self):
+        return [id[0] for id in self.session.query(Topic.id).all()]
+
     def get_place(self, place_id):
         return self.session.query(Place).filter_by(id=place_id).scalar()
 
@@ -401,21 +421,22 @@ class Storage:
         return self.session.query(Topic).filter_by(id=topic_id).scalar()
 
     def topic_exists(self, topic_id):
-        return (True if self.session.query(Topic.id).filter_by(id=topic_id).scalar()
-                is not None else False)
+        return (True if self.session.query(Topic.id).filter_by(
+            id=topic_id).scalar() is not None else False)
 
     def place_exists(self, place_id):
-        return (True if self.session.query(Place.id).filter_by(id=place_id).scalar()
-                is not None else False)
+        return (True if self.session.query(Place.id).filter_by(
+            id=place_id).scalar() is not None else False)
 
     def get_event(self, event_id):
         return self.session.query(Event).filter_by(id=event_id).scalar()
 
     def event_exists(self, event_id):
-        return (True if self.session.query(Event.id).filter_by(id=event_id).scalar()
-                is not None else False)
+        return (True if self.session.query(Event.id).filter_by(
+            id=event_id).scalar() is not None else False)
 
-    def get_events_coords(self, lat, lon, distance=2000, date=datetime.datetime.today()):
+    def get_events_coords(self, lat, lon, distance=2000,
+                          date=datetime.datetime.today()):
 
         dlat = fbd.tools.lat_from_met(distance)
         dlon = fbd.tools.lon_from_met(distance)
@@ -424,14 +445,15 @@ class Storage:
         left, right = lon - dlon, lon + dlon
         bottom, top = lat - dlat, lat + dlat
 
-        places = (self.session.query(Place)
-                  .filter(Place.lat >= bottom)
-                  .filter(Place.lat <= top)
-                  .filter(Place.lon >= left)
-                  .filter(Place.lon <= right).all())
+        places = (self.session.query(Place).filter(Place.lat >= bottom)
+                  .filter(Place.lat <=
+                          top).filter(Place.lon >=
+                                      left).filter(Place.lon <= right).all())
 
-        events = [event.to_dict() for place in places for event in place.events
-                  if event.start_time > date]
+        events = [
+            event.to_dict() for place in places for event in place.events
+            if event.start_time > date
+        ]
 
         return events
 
@@ -444,11 +466,10 @@ class Storage:
         left, right = lon - dlon, lon + dlon
         bottom, top = lat - dlat, lat + dlat
 
-        places = (self.session.query(Place)
-                  .filter(Place.lat >= bottom)
-                  .filter(Place.lat <= top)
-                  .filter(Place.lon >= left)
-                  .filter(Place.lon <= right).all())
+        places = (self.session.query(Place).filter(Place.lat >= bottom)
+                  .filter(Place.lat <=
+                          top).filter(Place.lon >=
+                                      left).filter(Place.lon <= right).all())
 
         return places
 

@@ -1,8 +1,4 @@
-# STL imports
-import datetime
-
-# Package imports
-import geocoder
+from geopy.geocoders import Nominatim
 
 LAT_PER_100M = 0.001622 / 1.8
 LONG_PER_100M = 0.005083 / 5.5
@@ -17,6 +13,5 @@ def lon_from_met(met):
 
 
 def get_coords(city):
-    # with open('google_api.json', 'r') as f:
-    #     key = json.load(f)['key']
-    return geocoder.google(city).latlng
+    loc = Nominatim().geocode(city)
+    return loc.latitude, loc.longitude

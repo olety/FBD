@@ -33,7 +33,9 @@ class Visualizer:
 
         logging.debug('Visualizer - plot_event_count: Getting the data')
         to_plot = self.storage.session.query(
-            Place.name, func.count(Place.name).label('total')).join(Event).group_by(Place.id).order_by(desc('total')).limit(top).all()
+            Place.name,
+            func.count(Place.name).label('total')).join(Event).group_by(
+                Place.id).order_by(desc('total')).limit(top).all()
 
         logging.debug('Visualizer - plot_event_count: Creating subplots')
         fig, ax = plt.subplots()
@@ -92,7 +94,7 @@ class Visualizer:
         # lat, lon = tools.get_coords('Wrocław')
 
         # map_options = GMapOptions(
-            # lat=51.1, lng=17.03333, map_type="roadmap", zoom=11)
+        # lat=51.1, lng=17.03333, map_type="roadmap", zoom=11)
 
         # plot = GMapPlot(
         #     x_range=DataRange1d(), y_range=DataRange1d(), map_options=map_options, labels=labels
@@ -101,18 +103,21 @@ class Visualizer:
 
         # plot.api_key = api_key
 
-        source = ColumnDataSource(
-            data=dict(
-                lat=lats,
-                lon=lngs,
-            )
-        )
+        source = ColumnDataSource(data=dict(
+            lat=lats,
+            lon=lngs, ))
 
         p = figure(tools=['tap'])
 
-        circle = Scatter(x='lon', y='lat', size=15,
-                         fill_color="blue", fill_alpha=0.8, line_color=None,
-                         legend=labels)
+        circle = Scatter(
+            x='lon',
+            y='lat',
+            size=15,
+            fill_color="blue",
+            fill_alpha=0.8,
+            line_color=None,
+            legend=labels)
+
         p.add_glyph(source, circle)
 
         p.legend.location = "top_left"
