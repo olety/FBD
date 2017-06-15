@@ -1,6 +1,7 @@
 #--------- Project ---------#
 CHANGELOG.md
 TODO.md
+config.json
 fbd/config.json
 fbd/google_api.json
 fbd/db/*
@@ -8,7 +9,6 @@ fbd/vis_out/*
 fbd/alembic.ini
 fbd/manage.py
 fbd/run.py
-
 #--------- macOS ---------#
 *.DS_Store
 .AppleDouble

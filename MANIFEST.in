@@ -2,6 +2,6 @@ include LICENSE
 include README.md
 include fbd/migrate
 include fbd/migrations/*
-include bin/config.json.example
 include fbd/google_api.json.example
 include fbd/alembic.ini.example
+include bin/config.json.example

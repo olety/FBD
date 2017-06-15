@@ -13,23 +13,40 @@ from sqlalchemy.orm import relationship, sessionmaker, validates
 
 import fbd.tools
 
+
+def default_json_serializer(obj):
+    '''
+    JSON serializer for storage objects not supported by the default package
+    '''
+    if isinstance(obj, datetime.datetime):
+        return obj.isoformat()
+    if (isinstance(obj, Topic) or isinstance(obj, Place) or
+            isinstance(obj, Event)):
+        return obj.to_dict()
+    raise TypeError('{} type could not be serialized.'.format(type(obj)))
+
+
 Base = declarative_base()
 
-place_topic = sqlalchemy.Table('Place_Topic', Base.metadata,
-                               sqlalchemy.Column('place_id', sqlalchemy.String,
-                                                 sqlalchemy.ForeignKey(
-                                                     'Place.id')),
-                               sqlalchemy.Column('topic_id', sqlalchemy.String,
-                                                 sqlalchemy.ForeignKey(
-                                                     'Topic.id')))
+place_topic = sqlalchemy.Table(
+    'Place_Topic',
+    Base.metadata,
+    sqlalchemy.Column('place_id', sqlalchemy.String,
+                      sqlalchemy.ForeignKey('Place.id')),
+    sqlalchemy.Column('topic_id', sqlalchemy.String,
+                      sqlalchemy.ForeignKey('Topic.id')),
+)
 
 
 class Topic(Base):
     __tablename__ = 'Topic'
 
     def to_json(self):
-        return json.dumps(self.to_dict(),
-                          default=Storage.default_json_serializer)
+        return json.dumps(
+            self.to_dict(),
+            default=default_json_serializer,
+            separators=(',', ':'),
+        )
 
     def to_dict(self):
         return {'id': self.id, 'name': self.name}
@@ -54,8 +71,11 @@ class Place(Base):
     __tablename__ = 'Place'
 
     def to_json(self):
-        return json.dumps(self.to_dict(),
-                          default=Storage.default_json_serializer)
+        return json.dumps(
+            self.to_dict(),
+            default=default_json_serializer,
+            separators=(',', ':'),
+        )
 
     def to_dict(self):
         # IDEA: Add events=T/F flag?
@@ -115,8 +135,11 @@ class Event(Base):
     __tablename__ = 'Event'
 
     def to_json(self):
-        return json.dumps(self.to_dict(),
-                          default=Storage.default_json_serializer)
+        return json.dumps(
+            self.to_dict(),
+            default=default_json_serializer,
+            separators=(',', ':'),
+        )
 
     def to_dict(self):
         return {
@@ -285,16 +308,6 @@ class Event(Base):
 
 class Storage:
 
-    @staticmethod
-    def default_json_serializer(obj):
-        """JSON serializer for objects not supported by the default json package"""
-        if isinstance(obj, datetime.datetime):
-            return obj.isoformat()
-        if isinstance(obj, Topic) or isinstance(obj, Place) or isinstance(
-                obj, Event):
-            return obj.to_dict()
-        raise TypeError('{} type could not be serialized.'.format(type(obj)))
-
     def __init__(self, db_url='sqlite:///db/fb.sqlite'):
         self.db = sqlalchemy.create_engine(db_url)
         try:
@@ -308,23 +321,29 @@ class Storage:
 
     def save_event(self, event, commit=True):
         try:
-            event = Event(id=event.get('id', '0'),
-                          desc=event.get('description', 'None'),
-                          name=event.get('name', 'Unnamed'),
-                          picture_url=event.get('picture',
-                                                {}).get('data',
-                                                        {}).get('url', 'None'),
-                          ticket_url=event.get('ticket_uri', 'None'),
-                          place_id=event.get('place_id', '0'),
-                          start_time=dateutil.parser.parse(
-                              event.get('start_time',
-                                        '2017-04-07T16:00:00+0200')))
+            event = Event(
+                id=event['id'],
+                desc=event.get('description', 'None'),
+                name=event['name'],
+                picture_url=event.get('picture', {}).get('data',
+                                                         {}).get('url', 'None'),
+                ticket_url=event.get('ticket_uri', 'None'),
+                place_id=event.get['place_id'],
+                start_time=dateutil.parser.parse(
+                    event.get(
+                        'start_time',
+                        '2017-04-07T16:00:00+0200',
+                    )),
+            )
             self.session.add(event)
             if commit:
                 self.session.commit()
+        except sqlalchemy.exc.IntegrityError as e:
+            logging.debug('Storage.save_event: {0}'.format(e))
+            self.session.rollback()
         except Exception as e:
             self.session.rollback()
-            logging.error(e)
+            logging.exception('Storage.save_event: {0}'.format(e))
 
     def save_topic(self, topic_dict, commit=True):
         try:
@@ -335,41 +354,51 @@ class Storage:
             if commit:
                 self.session.commit()
             return topic
+        except sqlalchemy.exc.IntegrityError as e:
+            logging.debug('Storage.save_topic: {0}'.format(e))
+            self.session.rollback()
         except Exception as e:
             self.session.rollback()
-            logging.error('Storage - save topic: {0}'.format(e))
+            logging.exception('Storage.save_topic: {0}'.format(e))
 
     def save_place(self, place, commit=True):
+        place_loc = place.get('location', {})
+        topic_list = []
         try:
-            place_loc = place.get('location', {})
-            topic_list = []
             # IDEA: Move this to the place class and pass in a string list
             if place.get('place_topics', None):
                 for topic in place['place_topics'].get('data'):
                     topic_list.append(
                         self.save_topic(topic_dict={
-                            'name': topic['name'], 'id': topic['id']
+                            'name': topic['name'],
+                            'id': topic['id']
                         }))
-            place = Place(id=place.get('id', '0'), topics=topic_list,
-                          ptype=place.get('place_type', 'UNKNOWN'),
-                          name=place.get('name', 'Unnamed'),
-                          city=place_loc.get('city', 'Wroclaw'),
-                          country=place_loc.get('country', 'Poland'),
-                          lat=place_loc.get('latitude', 0.0),
-                          lon=place_loc.get('longitude', 0.0),
-                          street=place_loc.get('street', 'Unknown'),
-                          zip=place_loc.get('zip', '00-000'))
+            place = Place(
+                id=place['id'],
+                topics=topic_list,
+                ptype=place.get('place_type', 'UNKNOWN'),
+                name=place.get('name', 'Unnamed'),
+                city=place_loc.get('city', 'Wroclaw'),
+                country=place_loc.get('country', 'Poland'),
+                lat=place_loc.get('latitude', 0.0),
+                lon=place_loc.get('longitude', 0.0),
+                street=place_loc.get('street', 'Unknown'),
+                zip=place_loc.get('zip', '00-000'),
+            )
             self.session.add(place)
             if commit:
                 self.session.commit()
+        except sqlalchemy.exc.IntegrityError as e:
+            logging.debug('Storage.save_place: {0}'.format(e))
+            self.session.rollback()
         except Exception as e:
             self.session.rollback()
-            logging.error('Storage - save place: {0}'.format(e))
+            logging.exception('Storage.save_place: {0}'.format(e))
 
     def update_place(self, place, commit=True):
+        logging.debug(
+            'Storage: update_place request, place = {0}'.format(place))
         try:
-            logging.debug('Storage: update_place request, place = {0}'
-                          .format(place))
             # IDEA: Move this to the place class and pass in a string list
             if self.place_exists(place['id']):
                 place_loc = place.get('location', {})
@@ -378,11 +407,12 @@ class Storage:
                     for topic in place['place_topics'].get('data'):
                         topic_list.append(
                             self.save_topic(topic_dict={
-                                'name': topic['name'], 'id': topic['id']
+                                'name': topic['name'],
+                                'id': topic['id']
                             }))
                 old_place = self.get_place(place['id'])
                 old_place.topics = topic_list
-                old_place.ptype = place['place_type']
+                old_place.ptype = place.get('place_type', 'UNKNOWN')
                 old_place.name = place['name']
                 old_place.city = place_loc.get('city')
                 old_place.country = place_loc.get('country')
@@ -395,9 +425,12 @@ class Storage:
                 return old_place
             else:
                 return self.save_place(place, commit)
+        except sqlalchemy.exc.IntegrityError as e:
+            logging.debug('Storage.update_place: {0}'.format(e))
+            self.session.rollback()
         except Exception as e:
             self.session.rollback()
-            logging.error('Storage - update place: {0}'.format(e))
+            logging.exception('Storage.update_place: {0}'.format(e))
 
     def save_post(self):
         pass
@@ -446,9 +479,8 @@ class Storage:
         bottom, top = lat - dlat, lat + dlat
 
         places = (self.session.query(Place).filter(Place.lat >= bottom)
-                  .filter(Place.lat <=
-                          top).filter(Place.lon >=
-                                      left).filter(Place.lon <= right).all())
+                  .filter(Place.lat <= top).filter(Place.lon >= left)
+                  .filter(Place.lon <= right).all())
 
         events = [
             event.to_dict() for place in places for event in place.events

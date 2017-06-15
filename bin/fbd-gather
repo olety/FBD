@@ -1,46 +1,93 @@
 #!/usr/bin/env python3
+
 if __name__ == '__main__':
     import argparse
-    import json
-    import logging
     import sys
-
-    import tqdm
-
-    from fbd import Gatherer, Storage
-
     # TODO: Argparse the config instead of having config.json
     # Adding command line arguments
 
     argparser = argparse.ArgumentParser(
-        description='Updates the facebook database with new data')
-    argparser.add_argument('-up', '--update-places', dest='update_places',
-                           action='store_true',
-                           help='Update the existing Place table entries.')
-
-    argparser.add_argument(
-        '-gp', '--get-places', dest='get_places', action='store_true', help=
-        'Populate the Place database. Queries the API based on location specified in config.json'
+        description='Updates the facebook database with new data',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
     argparser.add_argument(
-        '-ue', '--get-events', dest='get_events', action='store_true',
-        help='Populate the Event database based on the existing places.')
-    argparser.add_argument('-mc', '--max-concurrent', dest='max_concurrent',
-                        action='store', type=int, default=3,
-                        help='Maximal number of concurrent requestss. Default 3'
-                       )
-    argparser.add_argument('-su', '--storage-url', dest='storage_url',
-                           action='store', help='Specify the storage URL.')
-    argparser.add_argument('-v', '--verbose', dest='verbose',
-                           action='store_true',
-                           help='Enable DEBUG verbosity mode.')
+        '-v',
+        '--verbose',
+        dest='verbose',
+        action='store_true',
+        help='Enable DEBUG verbosity mode.',
+    )
+
+    argparser.add_argument(
+        '-gp',
+        '--get-places',
+        dest='get_places',
+        action='store_true',
+        help='Populate the Place database. '
+        'Queries the API based on location specified in config.json',
+    )
+
+    argparser.add_argument(
+        '-up',
+        '--update-places',
+        dest='update_places',
+        action='store_true',
+        help='Update the existing Place table entries.',
+    )
+
+    argparser.add_argument(
+        '-ge',
+        '--get-events',
+        dest='get_events',
+        action='store_true',
+        help='Populate the Event database based on the existing places.',
+    )
+
+    argparser.add_argument(
+        '-mc',
+        '--max-concurrent',
+        dest='max_concurrent',
+        action='store',
+        type=int,
+        default=3,
+        help='Maximal number of concurrent requestss.',
+    )
+
+    argparser.add_argument(
+        '-cf',
+        '--config-file',
+        dest='config_file',
+        action='store',
+        type=str,
+        default='config.json',
+        help='Path to a config.json file. See the github repo for example.',
+    )
+
+    argparser.add_argument(
+        '-su',
+        '--storage-url',
+        dest='storage_url',
+        action='store',
+        type=str,
+        default='sqlite:///fbd/db/fb.sqlite',
+        help='Specify the storage URL.',
+    )
+
     args = argparser.parse_args()
 
     # Print help if user didn't provide any arguments
     if len(sys.argv) == 1:
         argparser.print_help()
         sys.exit(0)
+
+    # Importing libraries now to improve performance with no args
+    import json
+    import logging
+
+    from fbd import Gatherer, Storage
+
+    # Handling the non-gatherer args
 
     # Configuring the logger
     if args.verbose:
@@ -56,24 +103,33 @@ if __name__ == '__main__':
     else:
         storage = Storage()
 
+    # Handling the gatherer args
+
     with open('config.json', 'r') as f:
         params = json.load(f)
 
-    gatherer = Gatherer(params['client_id'], params['client_secret'],
-                        storage=storage, logger=log)
+    gatherer = Gatherer(
+        params['client_id'],
+        params['client_secret'],
+        storage=storage,
+        logger=log,
+    )
 
     # Handling args -gp --get-places
     if args.get_places:
-        gatherer.get_places_loc(params['scan_radius'], params['city'],
-                                params['radius'],
-                                max_concurrent=args.max_concurrent)
-
-    # Handling args -ge --get-events
-    if args.update_events:
-        # TODO: implement max_concurrent=args.max_concurrent
-        gatherer.get_events_from_places()
+        gatherer.get_places_loc(
+            params['circle_radius'],
+            params['city'],
+            params['radius'],
+            max_concurrent=args.max_concurrent,
+        )
 
     # Handling args -up, --update-places
     if args.update_places:
         gatherer.update_places(max_concurrent=args.max_concurrent)
+
+    # Handling args -ge --get-events
+    if args.get_events:
+        gatherer.get_events_from_places(max_concurrent=args.max_concurrent)
+
     # print(gatherer.get_posts(gatherer.get_page_id('https://web.facebook.com/cnn/')))

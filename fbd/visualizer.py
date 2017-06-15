@@ -19,6 +19,7 @@ from fbd.storage import Event, Place, Storage
 
 
 class Visualizer:
+
     def __init__(self, storage, working_folder='./vis_out'):
         self.storage = storage
         self.workplace = working_folder
@@ -32,17 +33,18 @@ class Visualizer:
     def plot_event_count(self, top=5):
 
         logging.debug('Visualizer - plot_event_count: Getting the data')
-        to_plot = self.storage.session.query(
-            Place.name,
-            func.count(Place.name).label('total')).join(Event).group_by(
-                Place.id).order_by(desc('total')).limit(top).all()
+        to_plot = self.storage.session.query(Place.name,
+                                             func.count(Place.name).label(
+                                                 'total')).join(Event).group_by(
+                                                     Place.id).order_by(
+                                                         desc('total')).limit(
+                                                             top).all()
 
         logging.debug('Visualizer - plot_event_count: Creating subplots')
         fig, ax = plt.subplots()
         ind = np.arange(top)
 
-        logging.debug(
-            'Visualizer - plot_event_count: Extracting the plot data')
+        logging.debug('Visualizer - plot_event_count: Extracting the plot data')
         names = ['\n'.join(item[0].split(' ')) for item in to_plot]
         vals = [item[1] for item in to_plot]
 
@@ -105,18 +107,13 @@ class Visualizer:
 
         source = ColumnDataSource(data=dict(
             lat=lats,
-            lon=lngs, ))
+            lon=lngs,
+        ))
 
         p = figure(tools=['tap'])
 
-        circle = Scatter(
-            x='lon',
-            y='lat',
-            size=15,
-            fill_color="blue",
-            fill_alpha=0.8,
-            line_color=None,
-            legend=labels)
+        circle = Scatter(x='lon', y='lat', size=15, fill_color="blue",
+                         fill_alpha=0.8, line_color=None, legend=labels)
 
         p.add_glyph(source, circle)
 

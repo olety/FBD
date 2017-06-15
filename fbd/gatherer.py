@@ -1,11 +1,9 @@
 # STL imports
 # Package imports
 import asyncio
-import functools
 import json
 import logging
 import sys
-import time
 
 import aiohttp
 import async_timeout
@@ -19,7 +17,8 @@ from fbd.storage import Storage
 
 class Gatherer:
     # TODO: Move to numpy arrays / DFs?
-
+    # TODO: Store the already processed points as a table in a db for faster
+    # --get-places
     def __init__(self, client_id, client_secret, storage=None, logger=None):
         if not logger:
             logging.basicConfig(level=logging.INFO)
@@ -34,7 +33,8 @@ class Gatherer:
         self.client_secret = client_secret
         self.logger.debug('Gatherer: Getting the token')
         token_params = {
-            'client_id': self.client_id, 'client_secret': self.client_secret,
+            'client_id': self.client_id,
+            'client_secret': self.client_secret,
             'grant_type': 'client_credentials'
         }
         self.token = requests.get(
@@ -70,7 +70,7 @@ class Gatherer:
 
     # Generator
     @staticmethod
-    def _generate_points(radius, scan_radius, center_point_lat,
+    def _generate_points(radius, circle_radius, center_point_lat,
                          center_point_lng):
         # Defining the general square bounds
         top = center_point_lat + fbd.tools.lat_from_met(radius)
@@ -78,8 +78,8 @@ class Gatherer:
         left = center_point_lng - fbd.tools.lon_from_met(radius)
         right = center_point_lng + fbd.tools.lon_from_met(radius)
 
-        scan_radius_step = (fbd.tools.lat_from_met(scan_radius),
-                            fbd.tools.lon_from_met(scan_radius))
+        circle_step = (fbd.tools.lat_from_met(circle_radius),
+                       fbd.tools.lon_from_met(circle_radius))
 
         lat = top
         lng = left
@@ -88,17 +88,17 @@ class Gatherer:
         while lat > bottom:
             while lng < right:
                 yield lat, lng
-                lng += scan_radius_step[1]
+                lng += circle_step[1]
             lng = left
-            lat -= scan_radius_step[0]
+            lat -= circle_step[0]
 
     @staticmethod
-    def _num_iters(radius, scan_radius, center_point_lat, center_point_lng):
+    def _num_iters(radius, circle_radius, center_point_lat, center_point_lng):
         # Exhaust the _generate_points generator and count the # circles
         return len([
             x
             for x, _ in Gatherer._generate_points(
-                radius, scan_radius, center_point_lat, center_point_lng)
+                radius, circle_radius, center_point_lat, center_point_lng)
         ])
 
     def _exit(self):
@@ -114,7 +114,8 @@ class Gatherer:
         params = {
             'ids': place_id,
             'fields': 'id,name,place_type,place_topics,cover.fields(id,source),'
-                      'picture.type(large),location', 'access_token': self.token
+                      'picture.type(large),location',
+            'access_token': self.token
         }
         place = requests.get('https://graph.facebook.com/v2.9/',
                              params=params).json()[place_id]
@@ -173,13 +174,12 @@ class Gatherer:
             ):
                 yield await resp
 
-    def _get_place_ids_syn(self, lat, lon, scan_radius):
+    async def _get_place_ids(self, lat, lon, circle_radius):
         # Getting the pages from graph api
-        args = (lat, lon, scan_radius, self.token)
-        req_string = ('https://graph.facebook.com/v2.9/search?type=place&'
-                      'q="*"&center={},{}&distance={}&limit=30'
-                      '&fields=id&access_token={}').format(*args)
-        response = requests.get(req_string).json()
+        req_string = (f'https://graph.facebook.com/v2.9/search?type=place&'
+                      'q="*"&center={lat},{lon}&distance={circle_radius}'
+                      '&fields=id&access_token={self.token}')
+        response = self.get_json(req_string).json()
         # Quick list comprehension to extract the IDs
         place_id_list = [i['id'] for i in response['data']]
         for id_ in place_id_list:
@@ -193,13 +193,13 @@ class Gatherer:
                 if id_:
                     yield id_
 
-    async def _get_place_ids(self, scan_radius, city, radius, loop):
+    async def _get_place_ids(self, circle_radius, city, radius, loop):
         city_coords = fbd.tools.get_coords(city)
-        num_iters = self._num_iters(radius, scan_radius, *city_coords)
+        num_iters = self._num_iters(radius, circle_radius, *city_coords)
         tasks = [
-            loop.run_in_executor(None, self._get_place_ids_syn, lat, lon,
-                                 scan_radius)
-            for lat, lon in self._generate_points(radius, scan_radius,
+            loop.ensure_future(None, self._get_place_ids_syn, lat, lon,
+                                 circle_radius)
+            for lat, lon in self._generate_points(radius, circle_radius,
                                                   *city_coords)
         ]
         for f in tqdm(
@@ -214,7 +214,7 @@ class Gatherer:
         #     for item in sublist
         # ]
 
-    async def _get_places_loc(self, scan_radius, city, radius, loop,
+    async def _get_places_loc(self, circle_radius, city, radius, loop,
                               max_concurrent=3):
         sem = asyncio.Semaphore(max_concurrent)
         url = ('https://graph.facebook.com/v2.9/{0}?fields=id,name,'
@@ -222,14 +222,14 @@ class Gatherer:
                'picture.type(large),location&access_token={1}')
         places = []
         async with aiohttp.ClientSession() as session:
-            async for place_id in self._get_place_ids(scan_radius, city, radius,
-                                                      loop):
+            async for place_id in self._get_place_ids(circle_radius, city,
+                                                      radius, loop):
                 place = await Gatherer.get_json(
                     url.format(place_id, self.token), session, sem)
                 places.append(place)
         return places
 
-    def get_places_loc(self, scan_radius, city, radius, save_storage=True,
+    def get_places_loc(self, circle_radius, city, radius, save_storage=True,
                        max_concurrent=3):
         if not self.storage and save_storage:
             raise Exception('Gatherer: get_places_loc - '
@@ -238,7 +238,7 @@ class Gatherer:
         loop = asyncio.get_event_loop()
         # future = asyncio.ensure_future()
         places = loop.run_until_complete(
-            self._get_places_loc(scan_radius, city, radius, loop,
+            self._get_places_loc(circle_radius, city, radius, loop,
                                  max_concurrent))
         loop.close()
         if save_storage:
@@ -352,15 +352,16 @@ class Gatherer:
         # nytimes?fields=posts{link,message,id,created_time}
         request_str = (
             'https://graph.facebook.com/v2.9/{}'
-            '?fields=posts{{link, message, id, created_time,'
+            '?fields=posts{{'
+            'link, message, id, created_time,'
             'reactions.type(LIKE).limit(0).summary(total_count).as(like),'
             'reactions.type(LOVE).limit(0).summary(total_count).as(love),'
             'reactions.type(HAHA).limit(0).summary(total_count).as(haha),'
             'reactions.type(WOW).limit(0).summary(total_count).as(wow),'
             'reactions.type(SAD).limit(0).summary(total_count).as(sad),'
             'reactions.type(ANGRY).limit(0).summary(total_count).as(angry),'
-            'reactions.type(THANKFUL).limit(0).summary(total_count).as(thankful)}}'
-            '&access_token={}')
+            'reactions.type(THANKFUL).limit(0).summary(total_count)'
+            '.as(thankful)}}&access_token={}')
         # print(request_str.format(page_id, self.token))
         response = requests.get(
             request_str.format(page_id, self.token)).json()['posts']
@@ -384,8 +385,8 @@ class Gatherer:
             'reactions.type(WOW).limit(0).summary(total_count).as(wow),'
             'reactions.type(SAD).limit(0).summary(total_count).as(sad),'
             'reactions.type(ANGRY).limit(0).summary(total_count).as(angry),'
-            'reactions.type(THANKFUL).limit(0).summary(total_count).as(thankful)'
-            '&access_token={}')
+            'reactions.type(THANKFUL).limit(0).summary(total_count)'
+            '.as(thankful)&access_token={}')
         response = requests.get(request_str.format(post_id, self.token)).json()
         del response['id']
         return {
@@ -396,8 +397,10 @@ class Gatherer:
 
 if __name__ == '__main__':
     config = {
-        'storage_url': 'sqlite:///fbd/db/fb.sqlite', 'verbose': False,
-        'update_places': False, 'update_events': True
+        'storage_url': 'sqlite:///fbd/db/fb.sqlite',
+        'verbose': False,
+        'update_places': False,
+        'update_events': True,
     }
     # Configuring the logger
     if config['verbose']:
@@ -419,6 +422,6 @@ if __name__ == '__main__':
                         storage=storage, logger=log)
     # gatherer.get_places_loc(500, 'Wroclaw', 1000)
     # gatherer.get_events_from_places()
-    gatherer.update_places()
+    # gatherer.update_places()
     # print(gatherer.get_posts(gatherer.get_page_id('https://web.facebook.com/cnn/')))
     # print(gatherer.get_posts(gatherer.get_page_id('https://web.facebook.com/cnn/')))

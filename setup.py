@@ -1,41 +1,49 @@
 from setuptools import setup
+import os
 
 
 def readme():
-    with open('README.md', 'r') as f:
-        return f.read()
+    with open(
+            os.path.join(os.getcwd(), os.path.dirname(__file__), 'README.md'),
+            'r',
+    ) as readme:
+        return readme.read()
 
 
 setup(
     name='fbd',
-    version='0.0.2b2',
+    version='0.0.2b5',
     description='Facebook data gatherer and analyzer',
     long_description=readme(),
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3.6',
-        'Topic :: Other/Nonlisted Topic'
+        'Topic :: Other/Nonlisted Topic',
     ],
     url='https://github.com/olety/FBD',
     author='Oleksii Kyrylchuk',
     author_email='olkyrylchuk@gmail.com',
     license='MIT',
-    packages=['fbd'],
-    scripts=['bin/fbd-gather'],
+    packages=[
+        'fbd',
+    ],
+    scripts=[
+        'bin/fbd-gather',
+    ],
     install_requires=[
-        'setuptools',
-        'SQLAlchemy',
-        'alembic',
-        'requests',
-        'async_timeout',
-        'gmplot',
-        'bokeh',
         'tqdm',
-        'numpy',
-        'geopy',
-        'matplotlib',
+        'bokeh',
+        'SQLAlchemy',
+        'setuptools',
         'aiohttp',
+        'geopy',
+        'alembic',
+        'numpy',
+        'requests',
+        'matplotlib',
+        'gmplot',
+        'async_timeout',
         'python_dateutil',
     ],
     include_package_data=True,
