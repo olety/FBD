@@ -9,7 +9,8 @@ import pprint
 import dateutil.parser
 import sqlalchemy
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker, validates
+from sqlalchemy.orm import (relationship, scoped_session, sessionmaker,
+                            validates)
 
 import fbd.tools
 
@@ -355,9 +356,8 @@ class Storage:
         except Exception as e:
             logging.debug(e)
             pass
-        Session = sessionmaker()
-        Session.configure(bind=self.db)
-        self.session = Session()
+        session = scoped_session(sessionmaker(bind=self.db))
+        self.session = session()
 
     def save_eventlist(self, eventlist, commit=True):
         try:
