@@ -93,8 +93,8 @@ class Gatherer:
         lng = left
 
         # Iterating by small circles from top->bottom from left->right
-        while lat > bottom:
-            while lng < right:
+        while lat >= bottom:
+            while lng <= right:
                 yield lat, lng
                 lng += circle_step[1]
             lng = left
@@ -486,7 +486,7 @@ if __name__ == '__main__':
         for block_size in [1, 3, 10, 20]:
             start = time.time()
             gatherer.get_places_loc(
-                params['circle_radius'], 'Wroclaw', params['radius'], block_size=20, max_concurrent=10)
+                params['circle_radius'], 'Wroclaw', params['radius'], block_size=block_size, max_concurrent=max_concurrent)
             end = time.time()
             results.append({'time': end - start,
                             'block_size': block_size,
