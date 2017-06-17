@@ -41,6 +41,10 @@ place_topic = sqlalchemy.Table(
 class Topic(Base):
     __tablename__ = 'Topic'
 
+    @classmethod
+    def from_dict(cls, topic_dict):
+        return cls(id=topic_dict.get('id'), name=topic_dict.get('name'))
+
     def to_json(self):
         return json.dumps(
             self.to_dict(),
@@ -69,6 +73,25 @@ class Topic(Base):
 
 class Place(Base):
     __tablename__ = 'Place'
+
+    @classmethod
+    def from_dict(cls, place_dict):
+        place_loc = place_dict.get('location', {})
+        topic_list = []
+        if place_dict.get('place_dict_topics'):
+            topic_list = [Topic.from_dict(topic_dict)
+                          for topic_dict
+                          in place_dict['place_dict_topics'].get('data')]
+        return cls(id=place_dict['id'],
+                   topics=topic_list,
+                   ptype=place_dict.get('place_dict_type', 'UNKNOWN'),
+                   name=place_dict.get('name', 'Unnamed'),
+                   city=place_loc.get('city', 'Wroclaw'),
+                   country=place_loc.get('country', 'Poland'),
+                   lat=place_loc.get('latitude', 0.0),
+                   lon=place_loc.get('longitude', 0.0),
+                   street=place_loc.get('street', 'Unknown'),
+                   zip=place_loc.get('zip', '00-000'))
 
     def to_json(self):
         return json.dumps(
@@ -101,7 +124,7 @@ class Place(Base):
     lat = sqlalchemy.Column(sqlalchemy.Float())
     lon = sqlalchemy.Column(sqlalchemy.Float())
     street = sqlalchemy.Column(sqlalchemy.String(100))
-    topics = relationship('Topic', secondary=place_topic)
+    topics = relationship('Topic', secondary=place_topic, cascade='save-update')
     zip = sqlalchemy.Column(sqlalchemy.String(6))
 
     @validates('name', 'ptype', 'street', 'country', 'zip')
@@ -133,6 +156,23 @@ class Place(Base):
 
 class Event(Base):
     __tablename__ = 'Event'
+
+    @classmethod
+    def from_dict(cls, event_dict):
+        return cls(
+            id=event_dict['id'],
+            desc=event_dict.get('description', 'None'),
+            name=event_dict['name'],
+            picture_url=event_dict.get('picture', {})
+            .get('data', {}).get('url', 'None'),
+            ticket_url=event_dict.get('ticket_uri', 'None'),
+            place_id=event_dict.get['place_id'],
+            start_time=dateutil.parser.parse(
+                event_dict.get(
+                    'start_time',
+                    '2017-04-07T16:00:00+0200',
+                )),
+        )
 
     def to_json(self):
         return json.dumps(
@@ -319,85 +359,93 @@ class Storage:
         Session.configure(bind=self.db)
         self.session = Session()
 
-    def save_event(self, event, commit=True):
+    def save_eventlist(self, eventlist, commit=True):
         try:
-            event = Event(
-                id=event['id'],
-                desc=event.get('description', 'None'),
-                name=event['name'],
-                picture_url=event.get('picture', {}).get('data',
-                                                         {}).get('url', 'None'),
-                ticket_url=event.get('ticket_uri', 'None'),
-                place_id=event.get['place_id'],
-                start_time=dateutil.parser.parse(
-                    event.get(
-                        'start_time',
-                        '2017-04-07T16:00:00+0200',
-                    )),
-            )
+            eventlist = [Event.from_dict(event_dict)
+                         for event_dict in eventlist]
+            self.session.bulk_save_objects(eventlist)
+            if commit:
+                self.session.commit()
+        except sqlalchemy.exc.IntegrityError as e:
+            logging.debug(f'Storage.save_eventlist: {e}')
+            self.session.rollback()
+        except Exception as e:
+            self.session.rollback()
+            logging.exception(f'Storage.save_eventlist: {e}')
+
+    def save_placelist(self, placelist, commit=True):
+        try:
+            placelist = [Place.from_dict(pdict)
+                         for pdict in placelist]
+            self.session.bulk_save_objects(placelist)
+            if commit:
+                self.session.commit()
+        except sqlalchemy.exc.IntegrityError as e:
+            logging.debug(f'Storage.save_placelist: {e}')
+            self.session.rollback()
+        except Exception as e:
+            self.session.rollback()
+            logging.exception(f'Storage.save_placelist: {e}')
+
+    def save_topiclist(self, topiclist, commit=True):
+        try:
+            topiclist = [Topic.from_dict(topic_dict)
+                         for topic_dict in topiclist]
+            self.session.bulk_save_objects(topiclist)
+            if commit:
+                self.session.commit()
+        except sqlalchemy.exc.IntegrityError as e:
+            logging.debug(f'Storage.save_topiclist: {e}')
+            self.session.rollback()
+        except Exception as e:
+            self.session.rollback()
+            logging.exception(f'Storage.save_topiclist: {e}')
+
+    def save_event(self, event_dict, commit=True):
+        try:
+            event = Event.from_dict(event_dict)
             self.session.add(event)
             if commit:
                 self.session.commit()
         except sqlalchemy.exc.IntegrityError as e:
-            logging.debug('Storage.save_event: {0}'.format(e))
+            logging.debug(f'Storage.save_event: {e}')
             self.session.rollback()
         except Exception as e:
             self.session.rollback()
-            logging.exception('Storage.save_event: {0}'.format(e))
+            logging.exception(f'Storage.save_event: {e}')
 
     def save_topic(self, topic_dict, commit=True):
         try:
             if self.topic_exists(topic_dict.get('id')):
                 return self.get_topic(topic_dict.get('id'))
-            topic = Topic(id=topic_dict.get('id'), name=topic_dict.get('name'))
+            topic = Topic.from_dict(topic_dict)
             self.session.add(topic)
             if commit:
                 self.session.commit()
             return topic
         except sqlalchemy.exc.IntegrityError as e:
-            logging.debug('Storage.save_topic: {0}'.format(e))
+            logging.debug(f'Storage.save_topic: {e}')
             self.session.rollback()
         except Exception as e:
             self.session.rollback()
-            logging.exception('Storage.save_topic: {0}'.format(e))
+            logging.exception(f'Storage.save_topic: {e}')
 
-    def save_place(self, place, commit=True):
-        place_loc = place.get('location', {})
-        topic_list = []
+    def save_place(self, place_dict, commit=True):
         try:
-            # IDEA: Move this to the place class and pass in a string list
-            if place.get('place_topics', None):
-                for topic in place['place_topics'].get('data'):
-                    topic_list.append(
-                        self.save_topic(topic_dict={
-                            'name': topic['name'],
-                            'id': topic['id']
-                        }))
-            place = Place(
-                id=place['id'],
-                topics=topic_list,
-                ptype=place.get('place_type', 'UNKNOWN'),
-                name=place.get('name', 'Unnamed'),
-                city=place_loc.get('city', 'Wroclaw'),
-                country=place_loc.get('country', 'Poland'),
-                lat=place_loc.get('latitude', 0.0),
-                lon=place_loc.get('longitude', 0.0),
-                street=place_loc.get('street', 'Unknown'),
-                zip=place_loc.get('zip', '00-000'),
-            )
+            place = Place.from_dict(place_dict)
             self.session.add(place)
             if commit:
                 self.session.commit()
         except sqlalchemy.exc.IntegrityError as e:
-            logging.debug('Storage.save_place: {0}'.format(e))
+            logging.debug(f'Storage.save_place: {e}')
             self.session.rollback()
         except Exception as e:
             self.session.rollback()
-            logging.exception('Storage.save_place: {0}'.format(e))
+            logging.exception(f'Storage.save_place: {e}')
 
     def update_place(self, place, commit=True):
-        logging.debug(
-            'Storage: update_place request, place = {0}'.format(place))
+        # TODO: update and use session.merge
+        logging.debug(f'Storage: update_place request, place = {place}')
         try:
             # IDEA: Move this to the place class and pass in a string list
             if self.place_exists(place['id']):
@@ -406,7 +454,7 @@ class Storage:
                 if place.get('place_topics', None):
                     for topic in place['place_topics'].get('data'):
                         topic_list.append(
-                            self.save_topic(topic_dict={
+                            Topic.from_dict({
                                 'name': topic['name'],
                                 'id': topic['id']
                             }))
@@ -426,11 +474,11 @@ class Storage:
             else:
                 return self.save_place(place, commit)
         except sqlalchemy.exc.IntegrityError as e:
-            logging.debug('Storage.update_place: {0}'.format(e))
+            logging.debug(f'Storage.update_place: {e}')
             self.session.rollback()
         except Exception as e:
             self.session.rollback()
-            logging.exception('Storage.update_place: {0}'.format(e))
+            logging.exception(f'Storage.update_place: {e}')
 
     def save_post(self):
         pass

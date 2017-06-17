@@ -1,18 +1,18 @@
-from setuptools import setup
 import os
+
+from setuptools import setup
 
 
 def readme():
     with open(
             os.path.join(os.getcwd(), os.path.dirname(__file__), 'README.md'),
-            'r',
-    ) as readme:
+            'r') as readme:
         return readme.read()
 
 
 setup(
     name='fbd',
-    version='0.0.2b5',
+    version='0.0.2b8',
     description='Facebook data gatherer and analyzer',
     long_description=readme(),
     classifiers=[
@@ -31,6 +31,7 @@ setup(
     scripts=[
         'bin/fbd-gather',
     ],
+    requires_python=3.6,
     install_requires=[
         'tqdm',
         'bokeh',

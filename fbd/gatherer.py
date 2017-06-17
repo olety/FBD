@@ -42,6 +42,14 @@ class Gatherer:
             params=token_params).json()['access_token']
         self.logger.debug('Gatherer: Initialized')
         self.storage = storage
+        self.PLACE_ID_DETAILS_URL = ('https://graph.facebook.com/v2.9/{}'
+                                     '?fields=id,name,place_type,place_topics,'
+                                     'cover.fields(id,source),picture.type(large),'
+                                     f'location&access_token={self.token}')
+        self.PLACE_LAT_LON_RADIUS_URL = ('https://graph.facebook.com/v2.9/'
+                                         'search?type=place&q="*"&center={},{}'
+                                         '&distance={}&fields=id&'
+                                         f'access_token={self.token}''')
 
     @staticmethod
     def _clean_url(url):
@@ -174,77 +182,122 @@ class Gatherer:
             ):
                 yield await resp
 
-    async def _get_place_ids(self, lat, lon, circle_radius):
+    async def _get_place_ids_point(self, lat, lon, circle_radius, session, sem):
         # Getting the pages from graph api
-        req_string = (f'https://graph.facebook.com/v2.9/search?type=place&'
-                      'q="*"&center={lat},{lon}&distance={circle_radius}'
-                      '&fields=id&access_token={self.token}')
-        response = self.get_json(req_string).json()
+
+        id_list = []
+        response = await self.get_json(
+            self.PLACE_LAT_LON_RADIUS_URL.format(lat, lon, circle_radius),
+            session, sem
+        )
         # Quick list comprehension to extract the IDs
-        place_id_list = [i['id'] for i in response['data']]
+        place_id_list = [i.get('id') for i in response.get('data', [{}])]
         for id_ in place_id_list:
-            yield id_
+            if id_:
+                id_list.append(id_)
+        next_page = 'paging' in response and 'next' in response['paging']
         # There are multiple pages in the response
 
-        while 'paging' in response and 'next' in response['paging']:
-            response = requests.get(response['paging']['next']).json()
+        while next_page:
+            response = await self.get_json(response['paging']['next'], session, sem)
             for place in response['data']:
                 id_ = place.get('id')
                 if id_:
-                    yield id_
+                    id_list.append(id_)
+            next_page = 'paging' in response and 'next' in response['paging']
+        return id_list if id_list else None
 
-    async def _get_place_ids(self, circle_radius, city, radius, loop):
-        city_coords = fbd.tools.get_coords(city)
-        num_iters = self._num_iters(radius, circle_radius, *city_coords)
-        tasks = [
-            loop.ensure_future(None, self._get_place_ids_syn, lat, lon,
-                                 circle_radius)
-            for lat, lon in self._generate_points(radius, circle_radius,
-                                                  *city_coords)
-        ]
-        for f in tqdm(
-                asyncio.as_completed(tasks), total=num_iters,
-                desc='Processing points', unit='point', file=sys.stdout):
-            temp = await f
-            for item in tqdm(temp, desc='Processing places', unit='places',
-                             file=sys.stdout):
-                yield item
-        # return [
-        #     item for sublist in (await asyncio.gather(*tasks))
-        #     for item in sublist
-        # ]
+    async def _process_saving_places(self, fetch_tasks, save_storage,
+                                     loop, session, sem, block_id):
+        self.logger.debug(f'_process_saving_places - ftasks={len(fetch_tasks)}'
+                          f'block id = {block_id}')
+        places_details_tasks = []
+        places = []
+        for place_ids in tqdm(asyncio.as_completed(fetch_tasks),
+                              total=len(fetch_tasks), file=sys.stdout,
+                              desc=f'[Block {block_id}] Processing points'):
+            for pid in await place_ids:
+                places_details_tasks.append(asyncio.ensure_future(
+                    self.get_json(
+                        self.PLACE_ID_DETAILS_URL.format(pid), session, sem
+                    )))
+        for place_details in tqdm(asyncio.as_completed(places_details_tasks),
+                                  total=len(places_details_tasks),
+                                  file=sys.stdout,
+                                  desc=f'[Block {block_id}] Processing place details'):
+            places.append(await place_details)
+        if save_storage:
+            return asyncio.ensure_future(
+                loop.run_in_executor(
+                    None, self.storage.save_placelist, places)
+            )
+        else:
+            return places
 
     async def _get_places_loc(self, circle_radius, city, radius, loop,
-                              max_concurrent=3):
+                              save_storage, max_concurrent, block_size):
+        self.logger.debug('_get_places_loc - starting')
         sem = asyncio.Semaphore(max_concurrent)
-        url = ('https://graph.facebook.com/v2.9/{0}?fields=id,name,'
-               'place_type,place_topics,cover.fields(id,source),'
-               'picture.type(large),location&access_token={1}')
-        places = []
+        city_coords = fbd.tools.get_coords(city)
+        # num_iters = self._num_iters(radius, circle_radius, *city_coords)
+        fetch_tasks = []
+        save_outs = []
+        block_id = 0
         async with aiohttp.ClientSession() as session:
-            async for place_id in self._get_place_ids(circle_radius, city,
-                                                      radius, loop):
-                place = await Gatherer.get_json(
-                    url.format(place_id, self.token), session, sem)
-                places.append(place)
-        return places
+            for i, coords in enumerate(
+                    self._generate_points(radius, circle_radius, *city_coords)
+            ):
+                fetch_tasks.append(
+                    asyncio.ensure_future(
+                        self._get_place_ids_point(*coords, radius, session, sem)
+                    )
+                )
+                if (i + 1) % block_size == 0:
+                    block_id += 1
+                    save_outs.append(
+                        self._process_saving_places(
+                            fetch_tasks, save_storage, loop,
+                            session, sem, block_id)
+                    )
+                    fetch_tasks = []
+            else:
+                block_id += 1
+                save_outs.append(
+                    self._process_saving_places(fetch_tasks, save_storage,
+                                                loop, session, sem, block_id)
+                )
+                fetch_tasks = []
+            res = await asyncio.gather(*save_outs)
+            if save_storage:
+                for task in tqdm(asyncio.as_completed(res),
+                                 total=len(res),
+                                 file=sys.stdout,
+                                 desc='Saving the results'):
+                    await task
+            else:
+                if type(res[0]) == list:
+                    return [item for subarray in res for item in subarray]
+                else:
+                    return res
 
     def get_places_loc(self, circle_radius, city, radius, save_storage=True,
-                       max_concurrent=3):
+                       max_concurrent=3, block_size=3):
         if not self.storage and save_storage:
             raise Exception('Gatherer: get_places_loc - '
                             'storage wasn\'t defined')
         # ASYNC
-        loop = asyncio.get_event_loop()
-        # future = asyncio.ensure_future()
-        places = loop.run_until_complete(
-            self._get_places_loc(circle_radius, city, radius, loop,
-                                 max_concurrent))
-        loop.close()
-        if save_storage:
-            for place in places:
-                self.storage.save_place(place)
-        return places
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            res = loop.run_until_complete(
+                self._get_places_loc(circle_radius, city, radius, loop,
+                                     save_storage, max_concurrent, block_size)
+            )
+        finally:
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.close()
+
+        return res
 
     def _get_events_from_place_id_syn(self, place_id):
         # Getting the pages from graph api
@@ -289,7 +342,9 @@ class Gatherer:
         loop = asyncio.get_event_loop()
         events = loop.run_until_complete(
             asyncio.ensure_future(
-                self._get_events_from_places(loop, place_ids)))
+                self._get_events_from_places(loop, place_ids)
+            )
+        )
         loop.close()
 
         if save_storage:
@@ -400,7 +455,7 @@ if __name__ == '__main__':
         'storage_url': 'sqlite:///fbd/db/fb.sqlite',
         'verbose': False,
         'update_places': False,
-        'update_events': True,
+        'update_events': False,
     }
     # Configuring the logger
     if config['verbose']:
@@ -418,9 +473,23 @@ if __name__ == '__main__':
 
     with open('fbd/config.json', 'r') as f:
         params = json.load(f)
+
     gatherer = Gatherer(params['client_id'], params['client_secret'],
                         storage=storage, logger=log)
-    # gatherer.get_places_loc(500, 'Wroclaw', 1000)
+    import time
+    start = time.time()
+    gatherer.get_places_loc(500, 'Wroclaw', 1000)
+    end = time.time()
+    print(start - end)
+    start = time.time()
+    gatherer.get_places_loc(500, 'Wroclaw', 1000, block_size=10)
+    end = time.time()
+    print(start - end)
+    start = time.time()
+    gatherer.get_places_loc(500, 'Wroclaw', 1000, block_size=20)
+    end = time.time()
+    print(start - end)
+
     # gatherer.get_events_from_places()
     # gatherer.update_places()
     # print(gatherer.get_posts(gatherer.get_page_id('https://web.facebook.com/cnn/')))
