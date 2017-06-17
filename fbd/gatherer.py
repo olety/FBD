@@ -249,7 +249,8 @@ class Gatherer:
             ):
                 fetch_tasks.append(
                     asyncio.ensure_future(
-                        self._get_place_ids_point(*coords, radius, session, sem)
+                        self._get_place_ids_point(
+                            *coords, circle_radius, session, sem)
                     )
                 )
                 if (i + 1) % block_size == 0:
