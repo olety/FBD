@@ -477,18 +477,21 @@ if __name__ == '__main__':
     gatherer = Gatherer(params['client_id'], params['client_secret'],
                         storage=storage, logger=log)
     import time
-    start = time.time()
-    gatherer.get_places_loc(500, 'Wroclaw', 1000)
-    end = time.time()
-    print(start - end)
-    start = time.time()
-    gatherer.get_places_loc(500, 'Wroclaw', 1000, block_size=10)
-    end = time.time()
-    print(start - end)
+
     start = time.time()
     gatherer.get_places_loc(500, 'Wroclaw', 1000, block_size=20)
     end = time.time()
-    print(start - end)
+    print(end - start)
+
+    start = time.time()
+    gatherer.get_places_loc(500, 'Wroclaw', 1000, block_size=10)
+    end = time.time()
+    print(end - start)
+
+    start = time.time()
+    gatherer.get_places_loc(500, 'Wroclaw', 1000)
+    end = time.time()
+    print(end - start)
 
     # gatherer.get_events_from_places()
     # gatherer.update_places()
