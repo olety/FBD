@@ -357,7 +357,11 @@ class Storage:
             logging.debug(e)
             pass
         session = scoped_session(sessionmaker(bind=self.db))
-        self.session = session()
+        self.session_factory = session
+        self.session = self.session_factory()
+
+    def __del__(self):
+        self.session_factory.remove()
 
     def save_eventlist(self, eventlist, commit=True):
         try:

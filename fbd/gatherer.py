@@ -132,14 +132,14 @@ class Gatherer:
         return place
 
     @staticmethod
-    async def get_json(url, session, sem, params=None, timeout=10):
+    async def get_json(url, session, sem, params=None, timeout=15):
         async with sem:
             with async_timeout.timeout(timeout):
                 async with session.get(url, params=params) as response:
                     return json.loads(await response.text())
 
     @staticmethod
-    async def get_text(url, session, sem, params=None, timeout=10):
+    async def get_text(url, session, sem, params=None, timeout=15):
         async with sem:
             with async_timeout.timeout(timeout):
                 async with session.get(url, params=params) as response:
@@ -261,12 +261,13 @@ class Gatherer:
                     )
                     fetch_tasks = []
             else:
-                block_id += 1
-                save_outs.append(
-                    self._process_saving_places(fetch_tasks, save_storage,
-                                                loop, session, sem, block_id)
-                )
-                fetch_tasks = []
+                if fetch_tasks:
+                    block_id += 1
+                    save_outs.append(
+                        self._process_saving_places(fetch_tasks, save_storage,
+                                                    loop, session, sem, block_id)
+                    )
+                    fetch_tasks = []
             res = await asyncio.gather(*save_outs)
             if save_storage:
                 for task in tqdm(asyncio.as_completed(res),
@@ -473,26 +474,23 @@ if __name__ == '__main__':
 
     with open('fbd/config.json', 'r') as f:
         params = json.load(f)
+        print(params)
 
     gatherer = Gatherer(params['client_id'], params['client_secret'],
                         storage=storage, logger=log)
     import time
-
-    start = time.time()
-    gatherer.get_places_loc(500, 'Wroclaw', 1000, block_size=20)
-    end = time.time()
-    print(end - start)
-
-    start = time.time()
-    gatherer.get_places_loc(500, 'Wroclaw', 1000, block_size=10)
-    end = time.time()
-    print(end - start)
-
-    start = time.time()
-    gatherer.get_places_loc(500, 'Wroclaw', 1000)
-    end = time.time()
-    print(end - start)
-
+    from pprint import pprint
+    results = []
+    for max_concurrent in [1, 3, 5, 10, 500]:
+        for block_size in [1, 3, 10, 20]:
+            start = time.time()
+            gatherer.get_places_loc(
+                params['circle_radius'], 'Wroclaw', params['radius'], block_size=20, max_concurrent=10)
+            end = time.time()
+            results.append({'time': end - start,
+                            'block_size': block_size,
+                            'max_concurrent': max_concurrent})
+    pprint(results)
     # gatherer.get_events_from_places()
     # gatherer.update_places()
     # print(gatherer.get_posts(gatherer.get_page_id('https://web.facebook.com/cnn/')))
