@@ -5,7 +5,7 @@ setuptools==36.0.1
 aiohttp==2.1.0
 geopy==1.11.0
 alembic==0.9.2
-numpy==1.12.1
+numpy==1.21.0
 requests==2.13.0
 matplotlib==2.0.0
 gmplot==1.1.1
